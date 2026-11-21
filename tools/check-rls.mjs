@@ -12,14 +12,18 @@
  *  C. Append-only tables (`-- @append-only` above the CREATE TABLE) must have exactly
  *     SELECT and INSERT policies and no UPDATE/DELETE policy.
  *  D. No REAL / DOUBLE PRECISION / MONEY column types anywhere.
- *  E. No set_config('app.tenant_id', ..., false) — tenant context must be transaction-local.
- *  F. Every policy predicate must reference app.tenant_id (no policy that always passes).
+ *  E. No set_config('app.tenant_id' | 'app.session_token_hash' | 'app.user_id', ..., false)
+ *     — every setting must be transaction-local.
+ *  F. Every policy predicate must reference app.tenant_id or a declared pre-authentication
+ *     capability setting (ADR-0015), and a capability policy may only ever be SELECT.
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const MIGRATIONS = "db/migrations";
 const TENANT_COLUMN = /\btenant_id\b/;
+/** Pre-authentication settings from ADR-0015; each may only widen a SELECT. */
+const CAPABILITY_SETTINGS = ["app.session_token_hash", "app.user_id"];
 const PROBLEMS = [];
 let tablesChecked = 0;
 
@@ -72,30 +76,36 @@ for (const [file, raw] of sources) {
   }
 }
 
-// E. Session-level tenant context.
-if (/set_config\(\s*'app\.tenant_id'\s*,[^)]*,\s*false\s*\)/i.test(all)) {
-  fail("(all)", "set_config('app.tenant_id', ..., false) is forbidden — tenant context must be transaction-local");
+// E. Session-level settings.
+for (const setting of ["app.tenant_id", "app.session_token_hash", "app.user_id"]) {
+  const pattern = new RegExp(
+    `set_config\\(\\s*'${setting.replace(/[.]/g, "\\.")}'\\s*,[^)]*,\\s*false\\s*\\)`,
+    "i"
+  );
+  if (pattern.test(all)) {
+    fail("(all)", `set_config('${setting}', ..., false) is forbidden — settings must be transaction-local`);
+  }
 }
 
 // Tables.
-const tableRe = /create\s+table\s+(?:if\s+not\s+exists\s+)?([a-z_]+\.[a-z_]+)\s*\(([\s\S]*?)\n\);/gi;
+const tableRe = /create\\s+table\\s+(?:if\\s+not\\s+exists\\s+)?([a-z_]+\\.[a-z_]+)\\s*\\(([\\s\\S]*?)\\n\\);/gi;
 const tables = [];
 for (const match of lower.matchAll(tableRe)) {
   tables.push({ name: match[1], body: match[2], index: match.index });
 }
 
 const policies = [];
-const policyRe = /create\s+policy\s+[a-z0-9_]+\s+on\s+([a-z_]+\.[a-z_]+)\s+for\s+(select|insert|update|delete|all)([\s\S]*?);/gi;
+const policyRe = /create\\s+policy\\s+[a-z0-9_]+\\s+on\\s+([a-z_]+\\.[a-z_]+)\\s+for\\s+(select|insert|update|delete|all)([\\s\\S]*?);/gi;
 for (const match of lower.matchAll(policyRe)) {
   policies.push({ table: match[1], cmd: match[2], body: match[3] });
 }
 
 // The DO block creates policies with dynamic SQL, so also accept the loop declaration:
-const loopTables = /foreach\s+t\s+in\s+array\s+array\[([\s\S]*?)\]/i.exec(lower);
+const loopTables = /foreach\\s+t\\s+in\\s+array\\s+array\\[([\\s\\S]*?)\\]/i.exec(lower);
 const loopCovered = new Set(
-  loopTables ? [...loopTables[1].matchAll(/'([a-z_]+\.[a-z_]+)'/g)].map((m) => m[1]) : []
+  loopTables ? [...loopTables[1].matchAll(/'([a-z_]+\\.[a-z_]+)'/g)].map((m) => m[1]) : []
 );
-const appendOnlyList = /t\s*=\s*'([a-z_]+\.[a-z_]+)'/.exec(lower);
+const appendOnlyList = /t\\s*=\\s*'([a-z_]+\\.[a-z_]+)'/.exec(lower);
 
 for (const table of tables) {
   const isTenant = TENANT_COLUMN.test(table.body);
@@ -104,15 +114,15 @@ for (const table of tables) {
 
   // The policy loop applies ENABLE/FORCE with EXECUTE format('alter table %s ...'), so a
   // table covered by the loop satisfies the rule through the generated statement.
-  const loopEnables = /execute\s+format\(\s*'alter\s+table\s+%s\s+enable\s+row\s+level\s+security'/.test(lower);
-  const loopForces = /execute\s+format\(\s*'alter\s+table\s+%s\s+force\s+row\s+level\s+security'/.test(lower);
+  const loopEnables = /execute\\s+format\\(\\s*'alter\\s+table\\s+%s\\s+enable\\s+row\\s+level\\s+security'/.test(lower);
+  const loopForces = /execute\\s+format\\(\\s*'alter\\s+table\\s+%s\\s+force\\s+row\\s+level\\s+security'/.test(lower);
   const escapedName = table.name.replace(".", "\\.");
   const enabled =
     loopEnables ||
-    new RegExp(`alter\\s+table\\s+${escapedName}\\s+enable\\s+row\\s+level\\s+security`).test(lower);
+    new RegExp(`alter\\\\s+table\\\\s+${escapedName}\\\\s+enable\\\\s+row\\\\s+level\\\\s+security`).test(lower);
   const forced =
     loopForces ||
-    new RegExp(`alter\\s+table\\s+${escapedName}\\s+force\\s+row\\s+level\\s+security`).test(lower);
+    new RegExp(`alter\\\\s+table\\\\s+${escapedName}\\\\s+force\\\\s+row\\\\s+level\\\\s+security`).test(lower);
 
   if (!enabled) fail(table.name, "missing ENABLE ROW LEVEL SECURITY");
   if (!forced) fail(table.name, "missing FORCE ROW LEVEL SECURITY");
@@ -129,10 +139,17 @@ for (const table of tables) {
   }
 
   for (const policy of ownPolicies) {
-    if (!policy.body.includes("app.tenant_id") && !policy.body.includes("true")) {
-      fail(table.name, `policy ${policy.cmd} does not reference app.tenant_id`);
+    const capability = CAPABILITY_SETTINGS.find((setting) => policy.body.includes(setting));
+    if (!policy.body.includes("app.tenant_id") && !capability) {
+      fail(
+        table.name,
+        `policy ${policy.cmd} references neither app.tenant_id nor a declared capability setting`
+      );
     }
-    if (/^\s*using\s*\(\s*true\s*\)/i.test(policy.body)) {
+    if (capability && policy.cmd !== "select") {
+      fail(table.name, `capability policy for ${capability} is ${policy.cmd.toUpperCase()}, not SELECT`);
+    }
+    if (/^\\s*using\\s*\\(\\s*true\\s*\\)/i.test(policy.body)) {
       fail(table.name, `policy ${policy.cmd} is USING (true) — always passes`);
     }
   }
@@ -157,8 +174,12 @@ if (PROBLEMS.length > 0) {
   process.exit(1);
 }
 
+const capabilityPolicies = policies.filter((policy) =>
+  CAPABILITY_SETTINGS.some((setting) => policy.body.includes(setting))
+);
+
 console.log(
-  `OK  ${tablesChecked} tenant table(s), ${policies.length} explicit policy statement(s), ` +
-    `${loopCovered.size} table(s) covered by the generated policy loop; no float money, ` +
-    `no session-level tenant context`
+  `OK  ${tablesChecked} tenant table(s), ${policies.length} explicit policy statement(s) ` +
+    `(${capabilityPolicies.length} capability), ${loopCovered.size} table(s) covered by the ` +
+    `generated policy loop; no float money, no session-level settings`
 );
