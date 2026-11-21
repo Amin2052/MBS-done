@@ -16,12 +16,18 @@ const port = Number(process.env.PORT ?? 4000);
 const poolMax = Number(process.env.DB_POOL_MAX ?? 10);
 // Cookies are Secure unless the operator explicitly runs plain HTTP on localhost.
 const secureCookies = process.env.MBS_INSECURE_COOKIES !== "true";
+// When set, the API also serves the built owner portal from this directory.
+const webRoot = process.env.MBS_WEB_ROOT;
 
 const pool = new Pool({ connectionString: databaseUrl, max: poolMax });
-const server = createApiServer({ db: createPgDb(pool), secureCookies });
+const server = createApiServer({ db: createPgDb(pool), secureCookies, webRoot });
 
 server.listen(port, "0.0.0.0", () => {
-  console.log(`mbs api listening on :${port} (pool ${poolMax}, secure cookies ${secureCookies})`);
+  console.log(
+    `mbs api listening on :${port} (pool ${poolMax}, secure cookies ${secureCookies}, portal ${
+      webRoot ?? "not served"
+    })`
+  );
 });
 
 async function shutdown(signal: string) {
