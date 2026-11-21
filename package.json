@@ -1,0 +1,24 @@
+{
+  "name": "mbs",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Mooral Business Suite — multi-tenant ERP for Bangladeshi businesses",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "check:repo": "node tools/check-repo.mjs",
+    "check:rls": "node tools/check-rls.mjs",
+    "verify:schema": "node tools/verify-schema.mjs",
+    "spike:rls": "node tools/spikes/rls-pglite.mjs",
+    "test:money": "node --test packages/domain/test/money.test.ts",
+    "verify": "npm run check:repo && npm run check:rls && npm run verify:schema && npm run test:money"
+  },
+  "dependencies": {
+    "decimal.js": "^10.6.0"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.3.14"
+  }
+}
