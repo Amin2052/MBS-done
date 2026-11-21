@@ -32,6 +32,30 @@ desktop/     Electron shell (later, M12)
 _work/       git-ignored scratch
 ```
 
+## Running the owner portal
+
+The portal needs only Node; it starts with a disposable in-memory demo database.
+
+```bash
+npm install                 # first time (or after a checkpoint)
+npm run dev:api             # http://127.0.0.1:4000, demo data, prints the accounts
+npm run dev:web             # http://127.0.0.1:3000, proxies /api to :4000
+```
+
+Demo accounts all use the password printed by `dev:api`:
+`owner@mooral.test` (owner), `manager@mooral.test` (manager), `staff@mooral.test`
+(employee, read-only profile) and `multi@mooral.test` (two businesses, shows the chooser).
+
+For a production-shaped run, build the portal and let the API serve it from one origin:
+
+```bash
+npm run build:web
+MBS_WEB_ROOT=apps/web/dist npm run start:api
+```
+
+`npm run verify` runs the repository checks, the static RLS and i18n gates, the schema
+verifier (42 checks), the type check, the portal build and all test suites.
+
 ## Working with the legacy repository
 
 `old-src/` is a read-only clone created by `git clone --depth 1`, with
