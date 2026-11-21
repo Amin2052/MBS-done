@@ -25,6 +25,8 @@ dates, the decision, and reversibility. Decisions here were taken under spec 1.1
 | [0011](0011-scope-decisions.md) | v1 module scope (suppliers/purchases/expenses, certificates, messages, backup, licence, `ar`) | D1 | Accepted, review later |
 | [0012](0012-data-residency-and-pdpo.md) | Data residency and PDPO posture | D2 | Accepted, `NEEDS-PROFESSIONAL-REVIEW` |
 | [0013](0013-email-and-sms.md) | Email and SMS delivery | D1 pending spike | Proposed |
+| [0014](0014-threat-model.md) | STRIDE threat model | D1 | Accepted |
+| [0015](0015-auth-and-session-resolution.md) | Authentication, session resolution and pre-auth capabilities | D1 | Accepted |
 
 ## Format
 
