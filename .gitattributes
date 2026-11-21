@@ -1,0 +1,14 @@
+# Normalise line endings so Windows checkouts do not churn (spec 0.2)
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary assets
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
