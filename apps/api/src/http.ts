@@ -1,6 +1,6 @@
 /**
  * The HTTP layer: a small router over `node:http`. No framework, because the surface is
- * six routes and every response header below is a security decision worth seeing.
+ * eight routes and every response header below is a security decision worth seeing.
  *
  * Applied to every response: no-store (personalised data must never be cached), CSP
  * `default-src 'none'`, no framing, no referrer, nosniff, and a request id the audit log
@@ -9,6 +9,7 @@
 import { randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { Db } from "../../../packages/data/src/db.ts";
+import { developmentSecretsKey } from "../../../packages/domain/src/auth/secret-box.ts";
 import { parseCookies } from "../../../packages/domain/src/auth/session.ts";
 import { createAuthService, type AuthService } from "./auth.ts";
 import { ApiError } from "./errors.ts";
@@ -25,6 +26,11 @@ export interface ApiOptions {
   sessionTtlSeconds?: number;
   lockThreshold?: number;
   lockSeconds?: number;
+  /** Seals TOTP secrets. The entry point refuses the development key in production. */
+  mfaKey?: Buffer;
+  mfaIssuer?: string;
+  challengeTtlSeconds?: number;
+  mfaMaxAttempts?: number;
   now?: () => Date;
   /** Directory of the built owner portal; absent means this process serves only the API. */
   webRoot?: string;
@@ -42,10 +48,14 @@ interface Handler {
 export function buildHandler(options: ApiOptions): Handler {
   const auth = createAuthService({
     db: options.db,
+    mfaKey: options.mfaKey ?? developmentSecretsKey(),
     now: options.now,
     sessionTtlSeconds: options.sessionTtlSeconds,
     lockThreshold: options.lockThreshold,
     lockSeconds: options.lockSeconds,
+    mfaIssuer: options.mfaIssuer,
+    challengeTtlSeconds: options.challengeTtlSeconds,
+    mfaMaxAttempts: options.mfaMaxAttempts,
   });
   const routes = createRoutes({ auth, secureCookies: options.secureCookies ?? true });
   const byKey = new Map(routes.map((route) => [`${route.method} ${route.path}`, route]));
