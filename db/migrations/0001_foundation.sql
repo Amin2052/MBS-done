@@ -9,8 +9,9 @@
 --
 -- Every amount is numeric(19,4) (ADR-0003). No real/double precision anywhere.
 -- Tenant context is transaction-local: select set_config('app.tenant_id', $1, true).
-
-begin;
+--
+-- No transaction control here: tools/migrate.mjs wraps every file in one transaction and
+-- records its checksum in mbs_meta.schema_migrations, so a failed file leaves no trace.
 
 create schema if not exists platform;
 create schema if not exists tenant;
@@ -218,5 +219,3 @@ grant select, insert, update, delete on
   to app_runtime;
 grant select, insert on tenant.audit_log to app_runtime;
 grant usage, select on all sequences in schema tenant to app_runtime;
-
-commit;
