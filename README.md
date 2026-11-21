@@ -46,6 +46,17 @@ Demo accounts all use the password printed by `dev:api`:
 `owner@mooral.test` (owner), `manager@mooral.test` (manager), `staff@mooral.test`
 (employee, read-only profile) and `multi@mooral.test` (two businesses, shows the chooser).
 
+Owners and managers must complete a second factor (ADR-0017). The demo owner is already
+enrolled with the secret `dev:api` prints, and the terminal prints a current code with it:
+
+```bash
+npm run mfa:code -- JBSWY3DPEHPK3PXPJBSWY3DP
+```
+
+The manager and the multi-business owner reach the enrolment step on their first sign-in and
+receive ten one-time recovery codes. A real deployment must set `MBS_MFA_KEY`; the API
+refuses to start with the development key when `NODE_ENV=production`.
+
 For a production-shaped run, build the portal and let the API serve it from one origin:
 
 ```bash
@@ -54,7 +65,7 @@ MBS_WEB_ROOT=apps/web/dist npm run start:api
 ```
 
 `npm run verify` runs the repository checks, the static RLS and i18n gates, the schema
-verifier (42 checks), the type check, the portal build and all test suites.
+verifier (55 checks), the type check, the portal build and all 90 tests.
 
 ## Working with the legacy repository
 
