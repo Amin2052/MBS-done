@@ -10,23 +10,40 @@
   "scripts": {
     "check:repo": "node tools/check-repo.mjs",
     "check:rls": "node tools/check-rls.mjs",
+    "check:i18n": "node tools/check-i18n.mjs",
     "verify:schema": "node tools/verify-schema.mjs",
     "spike:rls": "node tools/spikes/rls-pglite.mjs",
     "migrate": "node tools/migrate.mjs",
     "start:api": "node apps/api/src/index.ts",
+    "dev:api": "node tools/dev-api.mjs",
+    "dev:web": "vite apps/web",
+    "build:web": "vite build apps/web",
+    "preview:web": "vite preview apps/web --host 0.0.0.0 --port 3000",
+    "typecheck": "tsc -p apps/web/tsconfig.json",
     "test:money": "node --test packages/domain/test/money.test.ts",
     "test:auth": "node --test packages/domain/test/auth.test.ts",
     "test:data": "node --test packages/data/test/migrator.test.ts",
     "test:api": "node --test apps/api/test/api.test.ts",
-    "test": "npm run test:money && npm run test:auth && npm run test:data && npm run test:api",
-    "verify": "npm run check:repo && npm run check:rls && npm run verify:schema && npm test"
+    "test:static": "node --test apps/api/test/static.test.ts",
+    "test:web": "node --test apps/web/test/i18n.test.ts apps/web/test/api-client.test.ts apps/web/test/org-form.test.ts",
+    "test": "npm run test:money && npm run test:auth && npm run test:data && npm run test:api && npm run test:static && npm run test:web",
+    "verify": "npm run check:repo && npm run check:rls && npm run check:i18n && npm run verify:schema && npm run typecheck && npm run build:web && npm test"
   },
   "dependencies": {
+    "@formatjs/intl": "^6.2.0",
     "decimal.js": "^10.6.0",
     "hash-wasm": "^4.13.0",
-    "pg": "^8.23.1"
+    "pg": "^8.23.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "^0.3.16"
+    "@electric-sql/pglite": "^0.3.16",
+    "@types/node": "^24.10.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.3.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8"
   }
 }
