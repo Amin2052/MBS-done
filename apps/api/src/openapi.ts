@@ -80,6 +80,30 @@ function requestBodyFor(path: string, method: string) {
       },
     };
   }
+  if (path === "/api/v1/auth/mfa/verify" || path === "/api/v1/auth/mfa/enroll") {
+    return {
+      required: true,
+      content: {
+        "application/json": {
+          schema: {
+            type: "object",
+            required: ["challenge_token", "code"],
+            properties: {
+              challenge_token: {
+                type: "string",
+                description: "From the login response; single use and short lived",
+              },
+              code: {
+                type: "string",
+                description: "6-digit TOTP code, or (verify only) one recovery code",
+                maxLength: 64,
+              },
+            },
+          },
+        },
+      },
+    };
+  }
   if (path === "/api/v1/org") {
     return {
       required: true,
@@ -111,10 +135,45 @@ function successResponse(path: string, method: string) {
   if (method === "POST" && path === "/api/v1/auth/logout") {
     return { "204": { description: "Session revoked" } };
   }
+  if (path === "/api/v1/auth/mfa/verify" || path === "/api/v1/auth/mfa/enroll") {
+    const enrolling = path.endsWith("/enroll");
+    return {
+      "200": {
+        description: enrolling
+          ? "Factor confirmed, session created; recovery codes are returned once"
+          : "Code accepted, session created",
+        headers: {
+          "set-cookie": { schema: { type: "string" }, description: "mbs_session, HttpOnly, SameSite=Strict" },
+        },
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                tenant: { $ref: "#/components/schemas/Tenant" },
+                role: { type: "string", enum: ["owner", "manager", "accountant", "employee"] },
+                expires_at: { type: "string", format: "date-time" },
+                recovery_codes: {
+                  type: "array",
+                  items: { type: "string" },
+                  description: "Enrolment only, shown exactly once",
+                },
+              },
+            },
+          },
+        },
+      },
+      "401": {
+        description: "Wrong code, or a challenge that expired or was already used",
+        content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } },
+      },
+    };
+  }
   if (path === "/api/v1/auth/login") {
     return {
       "200": {
-        description: "Session created; the cookie carries the opaque token",
+        description:
+          "Session created, or `mfa` when the account must complete a second factor (no cookie is set then)",
         headers: {
           "set-cookie": { schema: { type: "string" }, description: "mbs_session, HttpOnly, SameSite=Strict" },
         },
