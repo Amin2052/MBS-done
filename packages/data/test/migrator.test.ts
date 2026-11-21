@@ -23,22 +23,26 @@ function tempMigrations(files: Record<string, string>): string {
 
 test("applies every migration once and records checksums", async () => {
   const db = createPgliteDb(await new PGlite());
+  // Derived from the directory, so adding a milestone's migration does not need this test
+  // edited — what is being proved is that every file is applied exactly once, in order.
+  const files = readMigrations(REPO_MIGRATIONS);
+  const expected = files.map((file) => file.version);
   const first = await applyMigrations(db, REPO_MIGRATIONS);
   assert.deepEqual(
     first.applied.map((file) => file.version),
-    ["0001", "0002"]
+    expected
   );
 
   const ledger = await appliedMigrations(db);
-  assert.equal(ledger.length, 2);
+  assert.equal(ledger.length, expected.length);
   assert.match(ledger[0]!.checksum, /^[0-9a-f]{64}$/);
-  assert.equal(ledger[1]!.filename, "0002_auth.sql");
+  assert.equal(ledger.at(-1)!.filename, files.at(-1)!.filename);
 
   // Running again is a no-op: no file is ever applied twice.
   const second = await applyMigrations(db, REPO_MIGRATIONS);
   assert.equal(second.applied.length, 0);
-  assert.equal(second.skipped, 2);
-  assert.equal((await appliedMigrations(db)).length, 2);
+  assert.equal(second.skipped, expected.length);
+  assert.equal((await appliedMigrations(db)).length, expected.length);
 });
 
 test("a file edited after it was applied fails the run", async () => {
