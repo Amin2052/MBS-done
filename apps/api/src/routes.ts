@@ -1,7 +1,7 @@
 /**
- * The first `/api/v1` routes (ADR-0009): login, logout, the signed-in user, and the
- * business profile. Every route below reads the tenant from the session context — no route
- * accepts a business id from the caller.
+ * The first `/api/v1` routes (ADR-0009): login, logout, the signed-in user, the business
+ * profile and the two second-factor steps. Every route below reads the tenant from the
+ * session context — no route accepts a business id from the caller.
  */
 import type { Db, Tx } from "../../../packages/data/src/db.ts";
 import { withTenant } from "../../../packages/data/src/db.ts";
@@ -181,7 +181,8 @@ export function createRoutes(options: { auth: AuthService; secureCookies: boolea
       method: "POST",
       path: "/api/v1/auth/login",
       operationId: "login",
-      summary: "Exchange email, password and optionally a business slug for a session cookie",
+      summary:
+        "Exchange email, password and optionally a business slug for a session cookie, or for the second-factor step",
       auth: false,
       handler: async ({ auth: service, body, meta }) => {
         if (typeof body !== "object" || body === null) {
@@ -192,6 +193,10 @@ export function createRoutes(options: { auth: AuthService; secureCookies: boolea
           { email: input.email, password: input.password, tenantSlug: input.tenant_slug },
           meta
         );
+        if (result.kind === "mfa") {
+          // No cookie yet: the password alone is not a session for a privileged account.
+          return { status: 200, body: { mfa: result.challenge } };
+        }
         return {
           status: 200,
           body: {
@@ -199,6 +204,61 @@ export function createRoutes(options: { auth: AuthService; secureCookies: boolea
             tenant: result.tenant,
             role: result.role,
             expires_at: result.expiresAt,
+          },
+          cookies: [serializeSessionCookie(result.token, { secure })],
+        };
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/v1/auth/mfa/verify",
+      operationId: "verifyMfa",
+      summary: "Complete a sign-in that asked for a TOTP or recovery code",
+      auth: false,
+      handler: async ({ auth: service, body, meta }) => {
+        if (typeof body !== "object" || body === null) {
+          throw invalidRequest("body must be a JSON object");
+        }
+        const input = body as Record<string, unknown>;
+        const result = await service.verifyMfa({
+          challengeToken: input.challenge_token,
+          code: input.code,
+          meta,
+        });
+        return {
+          status: 200,
+          body: {
+            tenant: result.tenant,
+            role: result.role,
+            expires_at: result.expiresAt,
+          },
+          cookies: [serializeSessionCookie(result.token, { secure })],
+        };
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/v1/auth/mfa/enroll",
+      operationId: "enrollMfa",
+      summary: "Confirm the first TOTP code, activate the factor and return recovery codes",
+      auth: false,
+      handler: async ({ auth: service, body, meta }) => {
+        if (typeof body !== "object" || body === null) {
+          throw invalidRequest("body must be a JSON object");
+        }
+        const input = body as Record<string, unknown>;
+        const result = await service.enrollMfa({
+          challengeToken: input.challenge_token,
+          code: input.code,
+          meta,
+        });
+        return {
+          status: 200,
+          body: {
+            tenant: result.tenant,
+            role: result.role,
+            expires_at: result.expiresAt,
+            recovery_codes: result.recoveryCodes,
           },
           cookies: [serializeSessionCookie(result.token, { secure })],
         };
