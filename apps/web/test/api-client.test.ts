@@ -50,8 +50,83 @@ test("login posts the credentials and maps the response", async () => {
     email: "owner@alpha.test",
     password: "secret",
   });
+  assert.equal(result.kind, "session");
   assert.equal(result.expiresAt, "2026-11-21T20:00:00.000Z");
-  assert.equal(result.tenant.slug, "alpha");
+  assert.equal(result.tenant?.slug, "alpha");
+});
+
+test("a login that needs a code returns a challenge, not a session", async () => {
+  const { api } = stub(() =>
+    json(200, {
+      mfa: {
+        status: "verify",
+        challenge_token: "ch-1",
+        expires_at: "2026-11-21T10:05:00.000Z",
+      },
+    })
+  );
+
+  const result = await api.login({ email: "owner@alpha.test", password: "secret" });
+  assert.equal(result.kind, "mfa");
+  assert.equal(result.challenge?.status, "verify");
+  assert.equal(result.challenge?.challengeToken, "ch-1");
+  assert.equal(result.challenge?.enrollment, undefined);
+});
+
+test("an enrolment challenge carries the secret and the otpauth link", async () => {
+  const { api } = stub(() =>
+    json(200, {
+      mfa: {
+        status: "enroll",
+        challenge_token: "ch-2",
+        expires_at: "2026-11-21T10:05:00.000Z",
+        enrollment: {
+          secret: "JBSWY3DPEHPK3PXPJBSWY3DP",
+          secret_display: "JBSW Y3DP EHPK 3PXP JBSW Y3DP",
+          otpauth_uri: "otpauth://totp/Mooral:owner%40alpha.test?secret=JBSWY3DPEHPK3PXPJBSWY3DP",
+          issuer: "Mooral",
+          account: "owner@alpha.test",
+          digits: 6,
+          period_seconds: 30,
+        },
+      },
+    })
+  );
+
+  const result = await api.login({ email: "owner@alpha.test", password: "secret" });
+  assert.equal(result.kind, "mfa");
+  assert.equal(result.challenge?.enrollment?.account, "owner@alpha.test");
+  assert.match(String(result.challenge?.enrollment?.otpauthUri), /^otpauth:\/\/totp\//);
+  assert.equal(result.challenge?.enrollment?.periodSeconds, 30);
+});
+
+test("verify and enrol post the challenge token with the code", async () => {
+  const { api, calls } = stub((url) =>
+    url.endsWith("/verify")
+      ? json(200, {
+          tenant: { id: "t1", slug: "alpha", name: "Alpha Traders" },
+          role: "owner",
+          expires_at: "2026-11-21T20:00:00.000Z",
+        })
+      : json(200, {
+          tenant: { id: "t1", slug: "alpha", name: "Alpha Traders" },
+          role: "owner",
+          expires_at: "2026-11-21T20:00:00.000Z",
+          recovery_codes: ["ABCD-EFGH-JKLM", "NOPQ-RSTU-VWXY"],
+        })
+  );
+
+  const verified = await api.mfaVerify({ challengeToken: "ch-1", code: "123456" });
+  assert.equal(verified.recoveryCodes, undefined);
+  const enrolled = await api.mfaEnroll({ challengeToken: "ch-2", code: "654321" });
+  assert.deepEqual(enrolled.recoveryCodes, ["ABCD-EFGH-JKLM", "NOPQ-RSTU-VWXY"]);
+
+  assert.equal(calls[0]?.url, "/api/v1/auth/mfa/verify");
+  assert.deepEqual(JSON.parse(String(calls[0]?.init.body)), {
+    challenge_token: "ch-1",
+    code: "123456",
+  });
+  assert.equal(calls[1]?.url, "/api/v1/auth/mfa/enroll");
 });
 
 test("a multi-business account exposes the business list", async () => {
