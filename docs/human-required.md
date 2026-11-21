@@ -103,6 +103,32 @@ template and retention period, and the money-rounding rules.
 
 ---
 
+## H-07 — Land the lockfile and the Bangla font
+
+**What:** Commit `package-lock.json` from a machine with a normal `git push`, so the
+repository installs exactly what was tested; optionally add a self-hosted Noto Sans
+Bengali `.woff2` under `apps/web/public/fonts/`.
+
+**Why:** This session could only write files through an API channel that caps a single
+payload near 12 KB and cannot carry binary content. The lockfile (53 KB) and any font
+file therefore never reached `main`, and the remote lock is stale. The portal still works
+(it installs from `package.json`), but a fresh clone resolves versions again.
+
+**Steps:**
+1. On any machine with the repository: `git pull`, `npm install`.
+2. `git add package-lock.json && git commit -m "chore: commit the tested lockfile"`.
+3. For Bangla: drop `NotoSansBengali-Regular.woff2` and `-Bold` into
+   `apps/web/public/fonts/` and add the `@font-face` rules at the top of
+   `apps/web/src/styles.css` pointing at `/fonts/...`.
+4. `git push`.
+
+**Prerequisites:** write access to `MBS-done` and a machine with npm (H-01 makes this
+possible from this session too).
+**Rollback:** the lockfile can be regenerated with `npm install`; removing the font files
+only restores the device-font fallback the portal already uses.
+
+---
+
 ## Later items (prepared by the agent, executed by the owner)
 
 | Item | Milestone | Notes |
