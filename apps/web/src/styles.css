@@ -607,6 +607,44 @@ fieldset {
   accent-color: var(--primary);
 }
 
+/* ------------------------------------------------- second factor (M6) -------- */
+
+.mfa-secret {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 1px dashed var(--border-strong, var(--border));
+  border-radius: var(--radius-md);
+  background: var(--surface-muted, transparent);
+}
+
+/* The setup key is read and retyped in another app, so it must be legible and selectable. */
+.mfa-secret-value {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 1rem;
+  letter-spacing: 0.08em;
+  word-break: break-word;
+  user-select: all;
+}
+
+.recovery-codes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2) var(--space-4);
+  margin: 0 0 var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  list-style: decimal inside;
+}
+
+.recovery-codes code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: 0.04em;
+  user-select: all;
+}
+
 /* -------------------------------------------------------------- responsive ---- */
 
 @media (max-width: 860px) {
@@ -630,6 +668,11 @@ fieldset {
   }
 
   .field-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Ten recovery codes on a phone: one per line, so nothing is cut off. */
+  .recovery-codes {
     grid-template-columns: minmax(0, 1fr);
   }
 }
