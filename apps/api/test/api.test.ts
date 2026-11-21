@@ -14,6 +14,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { createPgliteDb } from "../../../packages/data/src/db.ts";
 import { applyMigrations } from "../../../packages/data/src/migrator.ts";
 import { hashPassword } from "../../../packages/domain/src/auth/password.ts";
+import { totpCodeAt } from "../../../packages/domain/src/auth/totp.ts";
 import { createApiServer, buildHandler } from "../src/http.ts";
 
 const db = createPgliteDb(new PGlite());
@@ -40,6 +41,14 @@ const EMAILS = {
 
 let server: ReturnType<typeof createApiServer>;
 let base = "";
+
+/**
+ * Owners and managers must complete a second factor (ADR-0017), so these tests sign in
+ * through the real two-stage flow. The clock moves a step per sign-in because a code from
+ * a step already spent is refused as a replay.
+ */
+let mockNow = Date.parse("2026-11-21T10:00:00.000Z");
+const SECRETS = new Map<string, string>();
 
 async function seed() {
   await applyMigrations(db, "db/migrations");
@@ -76,7 +85,13 @@ async function seed() {
 
 before(async () => {
   await seed();
-  server = createApiServer({ db, secureCookies: false, lockThreshold: 3, lockSeconds: 60 });
+  server = createApiServer({
+    db,
+    secureCookies: false,
+    lockThreshold: 3,
+    lockSeconds: 60,
+    now: () => new Date(mockNow),
+  });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 });
@@ -112,6 +127,30 @@ async function call(method: string, path: string, options: CallOptions = {}) {
 
 async function login(email: string, extra: Record<string, unknown> = {}) {
   return call("POST", "/api/v1/auth/login", { body: { email, password: PASSWORD, ...extra } });
+}
+
+/** Password, then the factor: enrolment the first time, a fresh code afterwards. */
+async function signIn(email: string, extra: Record<string, unknown> = {}) {
+  const first = await login(email, extra);
+  if (first.status !== 200 || !first.json?.mfa) return first;
+
+  const challenge = first.json.mfa as {
+    status: "verify" | "enroll";
+    challenge_token: string;
+    enrollment?: { secret: string };
+  };
+  let secret = SECRETS.get(email);
+  if (challenge.status === "enroll") {
+    secret = challenge.enrollment!.secret;
+    SECRETS.set(email, secret);
+  }
+  assert.ok(secret, `no TOTP secret for ${email}`);
+
+  mockNow += 30_000;
+  const path = challenge.status === "enroll" ? "enroll" : "verify";
+  return call("POST", `/api/v1/auth/mfa/${path}`, {
+    body: { challenge_token: challenge.challenge_token, code: totpCodeAt(secret, mockNow) },
+  });
 }
 
 test("health needs no session", async () => {
@@ -157,7 +196,7 @@ test("repeated failures lock the address, and the lock survives a correct passwo
 });
 
 test("a successful login issues an HttpOnly cookie and resolves the business from it", async () => {
-  const result = await login(EMAILS.alphaOwner);
+  const result = await signIn(EMAILS.alphaOwner);
   assert.equal(result.status, 200);
   assert.equal(result.json.tenant.slug, "alpha");
   assert.equal(result.json.role, "owner");
@@ -180,7 +219,7 @@ test("a successful login issues an HttpOnly cookie and resolves the business fro
 });
 
 test("the session table holds only a sha256 of the token", async () => {
-  const result = await login(EMAILS.alphaOwner);
+  const result = await signIn(EMAILS.alphaOwner);
   const token = result.cookie!.split("=")[1]!;
   const stored = await db.query<{ hex: string }>(
     "select encode(token_hash, 'hex') as hex from tenant.sessions where tenant_id = $1",
@@ -199,7 +238,7 @@ test("no cookie, a forged cookie and a malformed cookie are all 401", async () =
 });
 
 test("one business's cookie cannot read another business's profile", async () => {
-  const alpha = await login(EMAILS.alphaOwner);
+  const alpha = await signIn(EMAILS.alphaOwner);
   const org = await call("GET", "/api/v1/org", { cookie: alpha.cookie! });
   assert.equal(org.json.org.legalName, "Alpha Traders Ltd");
   assert.ok(!JSON.stringify(org.json).includes("Beta Foods"));
@@ -223,7 +262,7 @@ test("multi-business login requires a slug, and honours it", async () => {
   );
   assert.equal(ambiguous.cookie, null);
 
-  const beta = await login(EMAILS.bothOwner, { tenant_slug: "beta" });
+  const beta = await signIn(EMAILS.bothOwner, { tenant_slug: "beta" });
   assert.equal(beta.status, 200);
   assert.equal(beta.json.tenant.slug, "beta");
   assert.equal(beta.json.role, "owner");
@@ -252,7 +291,7 @@ test("profile updates are role-gated, validated and audited", async () => {
   assert.equal(denied.status, 403);
   assert.equal(denied.json.error.code, "forbidden");
 
-  const owner = await login(EMAILS.alphaOwner);
+  const owner = await signIn(EMAILS.alphaOwner);
   const before = await db.query<{ n: number }>(
     "select count(*)::int as n from tenant.audit_log where action = 'org.update'"
   );
@@ -283,7 +322,7 @@ test("profile updates are role-gated, validated and audited", async () => {
 });
 
 test("logout revokes the session and the cookie stops working", async () => {
-  const result = await login(EMAILS.alphaOwner);
+  const result = await signIn(EMAILS.alphaOwner);
   const out = await call("POST", "/api/v1/auth/logout", { cookie: result.cookie!, body: {} });
   assert.equal(out.status, 204);
   assert.match(out.headers.getSetCookie().join(";"), /Max-Age=0/);
