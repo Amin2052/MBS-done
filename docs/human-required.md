@@ -6,23 +6,18 @@ prerequisites, rollback.
 
 ---
 
-## H-01 — Provide push credentials for `MBS-done`
+## H-01 — Push credentials for `MBS-done` — RESOLVED 2026-11-22
 
-**What:** A Git credential that can write to `https://github.com/Amin2052/MBS-done.git`.
+**Status:** resolved. `git push origin main` succeeded on 2026-11-22
+(`106efda..cbff575`), so work units land as ordinary git commits instead of going through
+a file-by-file API channel, and binary assets (fonts) are no longer blocked.
 
-**Why:** Spec 0.3 — every work unit ends in a pushed commit, and 1.4 resumes by
-re-cloning. Without it, commits are landed through the GitHub API one file at a time,
-which produces a noisy history and cannot carry binary files.
+**What was asked:** a credential with write access to
+`https://github.com/Amin2052/MBS-done.git`.
 
-**Steps:**
-1. GitHub → Settings → Developer settings → Personal access tokens → **Fine-grained**.
-2. Scope: only `MBS-done`. Permission: **Contents: Read and write** (Metadata: Read is
-   automatic). Short expiry.
-3. Save it in an untracked env file (for example `.env.local`) as `GITHUB_TOKEN_MBS_DONE`.
-4. Tell the agent the variable name — never the value.
-
-**Prerequisites:** access to the `Amin2052` account.
-**Rollback:** revoke the token in the same settings page.
+**Still the owner's:** keep that credential out of the repository and out of chat, and
+rotate it if it was ever pasted anywhere. Revoke it at GitHub → Settings → Developer
+settings → Personal access tokens.
 
 ---
 
@@ -103,30 +98,29 @@ template and retention period, and the money-rounding rules.
 
 ---
 
-## H-07 — Land the lockfile and the Bangla font
+## H-07 — Bangla webfont (lockfile half resolved 2026-11-22)
 
-**What:** Commit `package-lock.json` from a machine with a normal `git push`, so the
-repository installs exactly what was tested; optionally add a self-hosted Noto Sans
-Bengali `.woff2` under `apps/web/public/fonts/`.
+**Status:** the lockfile is now committed with the M7 unit (`npm install` had revealed it
+was missing React, Vite and the type packages entirely), so a fresh clone installs exactly
+what was tested. The self-hosted font is still missing.
 
-**Why:** This session could only write files through an API channel that caps a single
-payload near 12 KB and cannot carry binary content. The lockfile (53 KB) and any font
-file therefore never reached `main`, and the remote lock is stale. The portal still works
-(it installs from `package.json`), but a fresh clone resolves versions again.
+**What:** a self-hosted Noto Sans Bengali `.woff2` (Regular and Bold, SIL OFL) under
+`apps/web/public/fonts/`, with `@font-face` rules.
+
+**Why:** ADR-0016 intends a self-hosted Bangla face; the portal currently falls back to
+the device's Bangla font. A binary asset could not be written through the API channel;
+ordinary `git push` now works, so this is no longer blocked by tooling.
 
 **Steps:**
-1. On any machine with the repository: `git pull`, `npm install`.
-2. `git add package-lock.json && git commit -m "chore: commit the tested lockfile"`.
-3. For Bangla: drop `NotoSansBengali-Regular.woff2` and `-Bold` into
-   `apps/web/public/fonts/`, add the `@font-face` rules at the top of
-   `apps/web/src/styles.css` pointing at `/fonts/...`, and adjust the CSP `font-src` if it
-   is ever tightened below `'self'`.
-4. `git push`.
+1. Drop `NotoSansBengali-Regular.woff2` and `NotoSansBengali-Bold.woff2` into
+   `apps/web/public/fonts/`.
+2. Add `@font-face` rules at the top of `apps/web/src/styles.css` pointing at `/fonts/...`.
+3. Keep `font-src 'self'` in the portal CSP; add the files to the repository allowlist if
+   one is introduced.
+4. `npm run verify`, then commit and push.
 
-**Prerequisites:** write access to `MBS-done` and a machine with npm (H-01 makes this
-possible from this session too).
-**Rollback:** the lockfile can be regenerated with `npm install`; removing the font files
-only restores the device-font fallback the portal already uses.
+**Prerequisites:** the font files (SIL OFL) and write access to `MBS-done`.
+**Rollback:** delete the files and the rules; the device-font fallback returns.
 
 ---
 

@@ -28,7 +28,8 @@ navigation and the first ERP module are next
   messages now (bn/en).
 - M7: ADR-0018; dependency-free History router (`/`, `/profile`, not-found); sidebar with
   active state and mobile strip; `GET /api/v1/dashboard` (profile, active team by role,
-  last 10 audit entries, own session) with loading/error/empty states. 96 tests.
+  last 10 audit entries, own session) with loading/error/empty states. 96 tests. Push over
+  HTTPS verified (`cbff575`), so H-01 is resolved and binary assets are unblocked.
 
 ## Next 3 actions
 
@@ -43,8 +44,6 @@ portal build, 96 tests). Portal: `npm run dev:api` + `npm run dev:web`.
 
 ## Blockers
 
-- **Push credential (H-01).** Text files go through the GitHub API in batches; binary files
-  cannot be pushed at all, which is why the Bangla webfont is not yet committed.
 - **Docker/PostgreSQL.** No socket access, no sudo, no local server → pool and ORM spikes
   are blocked. The `pg` adapter remains unexercised.
 - **Playwright/Chromium + fonts** not fetched → Bangla PDF corpus spike pending.

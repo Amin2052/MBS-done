@@ -5,7 +5,7 @@ R-003,"Part 0.1","Generate the OLD manifest (path, size, SHA-256 of every file) 
 R-004,"Part 0.1","Write guard refuses any path outside the NEW root","M0","done-verified","tools/guard.mjs","Self-test: inside 0, outside 1, root 2"
 R-005,"Part 1.4","docs/STATE.md is the single resume point and is updated after every work unit","M0","done-verified","docs/STATE.md",""
 R-006,"Part 1.7","docs/requirements.csv traces every testable requirement to a milestone and evidence","M0","done-verified","docs/requirements.csv",""
-R-007,"Part 0.3","Every work unit is committed and pushed to MBS-done","M0","in-progress","docs/human-required.md H-01","Pushed via GitHub API; no git credential for large payloads"
+R-007,"Part 0.3","Every work unit is committed and pushed to MBS-done","M0","done-verified","git log cbff575; push 106efda..cbff575 to origin/main on 2026-11-22","H-01 resolved; ordinary git push works and can carry binary assets"
 R-008,"Part 2","Record the verified environment inventory","M0","done-verified","docs/environment.md",""
 R-009,"Part 6.1","Server resolves the active business from the session and a verified membership, never from the browser","M4","done-verified","apps/api/src/auth.ts resolveSession; api test rejects a body tenant_id","Session row + live membership row; a slug is only matched against memberships"
 R-010,"Part 6.2","Every tenant table has tenant_id NOT NULL, FORCE RLS and all four policies","M3","in-progress","db/migrations/0001_foundation.sql; tools/verify-schema.mjs (42/42)","All 5 foundation tenant tables verified; business tables arrive in later milestones under the same loop"
