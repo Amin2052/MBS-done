@@ -12,13 +12,21 @@
     "check:rls": "node tools/check-rls.mjs",
     "verify:schema": "node tools/verify-schema.mjs",
     "spike:rls": "node tools/spikes/rls-pglite.mjs",
+    "migrate": "node tools/migrate.mjs",
+    "start:api": "node apps/api/src/index.ts",
     "test:money": "node --test packages/domain/test/money.test.ts",
-    "verify": "npm run check:repo && npm run check:rls && npm run verify:schema && npm run test:money"
+    "test:auth": "node --test packages/domain/test/auth.test.ts",
+    "test:data": "node --test packages/data/test/migrator.test.ts",
+    "test:api": "node --test apps/api/test/api.test.ts",
+    "test": "npm run test:money && npm run test:auth && npm run test:data && npm run test:api",
+    "verify": "npm run check:repo && npm run check:rls && npm run verify:schema && npm test"
   },
   "dependencies": {
-    "decimal.js": "^10.6.0"
+    "decimal.js": "^10.6.0",
+    "hash-wasm": "^4.13.0",
+    "pg": "^8.23.1"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "^0.3.14"
+    "@electric-sql/pglite": "^0.3.16"
   }
 }

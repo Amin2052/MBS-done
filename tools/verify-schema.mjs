@@ -11,9 +11,9 @@
  *
  * Not covered (needs a real server): concurrent transactions through a connection pool.
  */
-import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
+import { createPgliteDb } from "../packages/data/src/db.ts";
+import { applyMigrations, readMigrations } from "../packages/data/src/migrator.ts";
 
 const MIGRATIONS = "db/migrations";
 const results = [];
@@ -24,18 +24,19 @@ function check(name, ok, detail) {
   results.push(`${ok ? "PASS" : "FAIL"}  ${name}${detail ? ` — ${detail}` : ""}`);
 }
 
-const db = await new PGlite();
+const engine = await new PGlite();
+const db = createPgliteDb(engine);
 
-for (const file of readdirSync(MIGRATIONS).filter((f) => f.endsWith(".sql")).sort()) {
-  const sql = readFileSync(join(MIGRATIONS, file), "utf8");
-  try {
-    await db.exec(sql);
-  } catch (error) {
-    console.error(`FAIL  migration ${file} did not apply: ${error.message}`);
-    process.exit(1);
-  }
+// Use the same runner as production: ordering, checksums and the ledger are verified here,
+// not only in the unit test.
+try {
+  const result = await applyMigrations(db, MIGRATIONS);
+  console.log(`applied ${result.applied.length} migration file(s) via tools/migrate.mjs rules`);
+} catch (error) {
+  console.error(`FAIL  migrations did not apply: ${error.message}`);
+  process.exit(1);
 }
-console.log(`applied ${readdirSync(MIGRATIONS).filter((f) => f.endsWith(".sql")).length} migration file(s)`);
+console.log(`checksummed ${readMigrations(MIGRATIONS).length} migration file(s)`);
 
 // --- catalogue: RLS on every tenant table -------------------------------------
 const tables = await db.query(`
@@ -52,8 +53,15 @@ const tables = await db.query(`
 check("tenant schema has tables", tables.rows.length > 0, `${tables.rows.length} tables`);
 
 const APPEND_ONLY = new Set(["audit_log"]);
+// Additive SELECT-only capability policies (ADR-0015), one each on these two tables.
+const CAPABILITY_POLICIES = new Map([
+  ["sessions", 1],
+  ["memberships", 1],
+]);
 for (const row of tables.rows) {
-  const expected = APPEND_ONLY.has(row.relname) ? 2 : 4;
+  const expected = APPEND_ONLY.has(row.relname)
+    ? 2
+    : 4 + (CAPABILITY_POLICIES.get(row.relname) ?? 0);
   check(`tenant.${row.relname} has RLS enabled`, row.rls === true);
   check(`tenant.${row.relname} has FORCE RLS`, row.forced === true);
   check(
@@ -207,7 +215,102 @@ const lookupGrant = await db.query(
 );
 check("app_runtime may call platform.user_by_email", lookupGrant.rows[0].ok === true);
 
+// --- M4: the auth lookups are callable, and only through their functions -------
+for (const signature of [
+  "platform.login_lookup(text,text)",
+  "platform.login_record_failure(text,integer,integer)",
+  "platform.login_record_success(text)",
+  "platform.user_profile(uuid)",
+  "platform.tenant_by_id(uuid)",
+]) {
+  const grant = await db.query(
+    "select has_function_privilege('app_runtime', $1, 'execute') as ok",
+    [signature]
+  );
+  check(`app_runtime may call ${signature}`, grant.rows[0].ok === true);
+}
+
+const attemptsTable = await db.query(
+  "select has_table_privilege('app_runtime', 'platform.login_attempts', 'select') as ok"
+);
+check("app_runtime cannot read the login throttle table", attemptsTable.rows[0].ok === false);
+
+// --- M4: capability policies expose one row each, never a tenant ----------------
+const userA = "33333333-3333-4333-8333-333333333333";
+const userB = "44444444-4444-4444-8444-444444444444";
+await db.query(
+  "insert into platform.users (id, email, password_hash) values ($1,'a@example.test','x'), ($2,'b@example.test','x')",
+  [userA, userB]
+);
+await asTenant(tenantA, (tx) =>
+  tx.query(
+    "insert into tenant.memberships (tenant_id, user_id, role, status) values ($1,$2,'owner','active')",
+    [tenantA, userA]
+  )
+);
+await asTenant(tenantB, (tx) =>
+  tx.query(
+    "insert into tenant.memberships (tenant_id, user_id, role, status) values ($1,$2,'owner','active')",
+    [tenantB, userB]
+  )
+);
+
+const tokenA = "ab".repeat(32);
+const tokenB = "cd".repeat(32);
+for (const [tenant, user, token] of [
+  [tenantA, userA, tokenA],
+  [tenantB, userB, tokenB],
+]) {
+  await asTenant(tenant, (tx) =>
+    tx.query(
+      "insert into tenant.sessions (tenant_id, user_id, token_hash, expires_at) values ($1,$2,decode($3,'hex'), now() + interval '1 hour')",
+      [tenant, user, token]
+    )
+  );
+}
+
+const sessionCapability = await db.transaction(async (tx) => {
+  await tx.query("SET LOCAL ROLE app_runtime");
+  await tx.query("select set_config('app.session_token_hash', $1, true)", [`\\x${tokenA}`]);
+  return tx.query("select tenant_id::text as tenant_id from tenant.sessions");
+});
+check(
+  "session capability exposes exactly the matching session",
+  sessionCapability.rows.length === 1 && sessionCapability.rows[0].tenant_id === tenantA,
+  `${sessionCapability.rows.length} row(s)`
+);
+
+const wrongToken = await db.transaction(async (tx) => {
+  await tx.query("SET LOCAL ROLE app_runtime");
+  await tx.query("select set_config('app.session_token_hash', $1, true)", [`\\x${"ef".repeat(32)}`]);
+  return tx.query("select count(*)::int as n from tenant.sessions");
+});
+check("an unmatched session capability exposes nothing", wrongToken.rows[0].n === 0);
+
+const membershipCapability = await db.transaction(async (tx) => {
+  await tx.query("SET LOCAL ROLE app_runtime");
+  await tx.query("select set_config('app.user_id', $1, true)", [userA]);
+  return tx.query("select tenant_id::text as tenant_id from tenant.memberships");
+});
+check(
+  "user capability exposes only that user's memberships",
+  membershipCapability.rows.length === 1 && membershipCapability.rows[0].tenant_id === tenantA,
+  `${membershipCapability.rows.length} row(s)`
+);
+
+const noCapability = await db.transaction(async (tx) => {
+  await tx.query("SET LOCAL ROLE app_runtime");
+  const sessions = await tx.query("select count(*)::int as n from tenant.sessions");
+  const memberships = await tx.query("select count(*)::int as n from tenant.memberships");
+  return { sessions: sessions.rows[0].n, memberships: memberships.rows[0].n };
+});
+check(
+  "without a capability neither sessions nor memberships are visible",
+  noCapability.sessions === 0 && noCapability.memberships === 0,
+  JSON.stringify(noCapability)
+);
+
 console.log(results.join("\n"));
 console.log(`\n${results.length - failed}/${results.length} checks passed`);
-await db.close();
+await engine.close();
 process.exit(failed === 0 ? 0 : 1);
