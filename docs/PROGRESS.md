@@ -18,8 +18,9 @@ _Old-repo integrity is re-checked at every milestone exit: `git -C old-src statu
 | M1 | Read-only audit | done-verified (source outputs); 8 blocked | `docs/milestones/M01.md` |
 | M2 | Architecture, decisions, spikes | in-progress — ADRs + tokens + RLS spike done; pool/ORM/PDF/email spikes open | `docs/milestones/M02.md`, `docs/adr/` |
 | M3 | Foundation (tenancy, audit log, money) | done-verified — schema 42/42 after the M4 migration; money 10/10 | `docs/milestones/M03.md`, `docs/milestones/M04.md` |
-| M4 | Auth, sessions, API v1 | in-progress — runner, login/session/logout, 6 routes green; MFA, Kysely, pool concurrency open | `docs/milestones/M04.md`, ADR-0015 |
-| M5 | Owner portal: sign in, business profile | in-progress — both screens built, bn/en, 65 tests + typecheck + build green; further screens and MFA open | `docs/milestones/M05.md`, ADR-0016 |
+| M4 | Auth, sessions, API v1 | in-progress — runner, login/session/logout and the v1 routes green; Kysely and pool concurrency open | `docs/milestones/M04.md`, ADR-0015 |
+| M5 | Owner portal: sign in, business profile | in-progress — both screens built, bn/en, verified; further screens open | `docs/milestones/M05.md`, ADR-0016 |
+| M6 | Second factor: TOTP + recovery codes | done-verified for the sign-in path — 90 tests, schema 55/55; passkeys, session list and self-service reset open | `docs/milestones/M06.md`, ADR-0017 |
 
 ## Decisions taken on the owner's behalf
 
@@ -41,6 +42,10 @@ _Old-repo integrity is re-checked at every milestone exit: `git -C old-src statu
 | 2026-11-21 | Owner portal is React + Vite, static, served same-origin by the API; no router until the third screen | D1 | ADR-0016 |
 | 2026-11-21 | i18n gate is `tools/check-i18n.mjs` instead of ESLint `no-restricted-syntax` | D1 | M05, deviation from ADR-0008 |
 | 2026-11-21 | Bangla uses the device font for now; self-hosted Noto Sans Bengali deferred | D1 | binary cannot be pushed (H-07) |
+| 2026-11-21 | TOTP is mandatory for owner and manager accounts; enrolment happens inside the first sign-in | D1 | ADR-0017 |
+| 2026-11-21 | Ten single-use recovery codes; TOTP secrets sealed with AES-256-GCM under `MBS_MFA_KEY` | D1 | ADR-0017 |
+| 2026-11-21 | Login challenges are hashed, single-use, five-minute tokens bound to one user and business | D1 | M06 |
+| 2026-11-21 | The login throttle takes the caller's clock (migration 0004) so one rule never compares two clocks | D1 | M06 |
 
 ## Open questions
 

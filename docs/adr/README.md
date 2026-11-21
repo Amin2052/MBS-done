@@ -27,6 +27,8 @@ dates, the decision, and reversibility. Decisions here were taken under spec 1.1
 | [0013](0013-email-and-sms.md) | Email and SMS delivery | D1 pending spike | Proposed |
 | [0014](0014-threat-model.md) | STRIDE threat model | D1 | Accepted |
 | [0015](0015-auth-and-session-resolution.md) | Authentication, session resolution and pre-auth capabilities | D1 | Accepted |
+| [0016](0016-owner-portal-client.md) | Owner portal client stack and same-origin hosting | D1 | Accepted |
+| [0017](0017-second-factor.md) | Second factor: mandatory TOTP for owners and managers, recovery codes, sealed secrets | D1 | Accepted |
 
 ## Format
 

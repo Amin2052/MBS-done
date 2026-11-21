@@ -118,8 +118,9 @@ file therefore never reached `main`, and the remote lock is stale. The portal st
 1. On any machine with the repository: `git pull`, `npm install`.
 2. `git add package-lock.json && git commit -m "chore: commit the tested lockfile"`.
 3. For Bangla: drop `NotoSansBengali-Regular.woff2` and `-Bold` into
-   `apps/web/public/fonts/` and add the `@font-face` rules at the top of
-   `apps/web/src/styles.css` pointing at `/fonts/...`.
+   `apps/web/public/fonts/`, add the `@font-face` rules at the top of
+   `apps/web/src/styles.css` pointing at `/fonts/...`, and adjust the CSP `font-src` if it
+   is ever tightened below `'self'`.
 4. `git push`.
 
 **Prerequisites:** write access to `MBS-done` and a machine with npm (H-01 makes this
