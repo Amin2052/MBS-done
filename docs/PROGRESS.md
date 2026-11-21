@@ -40,7 +40,7 @@ _Old-repo integrity is re-checked at every milestone exit: `git -C old-src statu
 | 2026-11-21 | hash-wasm for Argon2id instead of a native binding (no compiler in deploy) | D1 | M04 |
 | 2026-11-21 | Owner portal is React + Vite, static, served same-origin by the API; no router until the third screen | D1 | ADR-0016 |
 | 2026-11-21 | i18n gate is `tools/check-i18n.mjs` instead of ESLint `no-restricted-syntax` | D1 | M05, deviation from ADR-0008 |
-| 2026-11-21 | Bangla uses the device font for now; self-hosted Noto Sans Bengali deferred | D1 | binary cannot be pushed (H-05) |
+| 2026-11-21 | Bangla uses the device font for now; self-hosted Noto Sans Bengali deferred | D1 | binary cannot be pushed (H-07) |
 
 ## Open questions
 
