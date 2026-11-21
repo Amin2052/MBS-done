@@ -14,6 +14,7 @@ import { createAuthService, type AuthService } from "./auth.ts";
 import { ApiError } from "./errors.ts";
 import { createRoutes, type RouteDefinition, type RouteResult } from "./routes.ts";
 import { openApiDocument } from "./openapi.ts";
+import { createStaticHandler, type StaticHandler } from "./static.ts";
 
 const MAX_BODY_BYTES = 16 * 1024;
 const JSON_CONTENT_TYPE = /^application\/json\s*(?:;|$)/i;
@@ -25,6 +26,8 @@ export interface ApiOptions {
   lockThreshold?: number;
   lockSeconds?: number;
   now?: () => Date;
+  /** Directory of the built owner portal; absent means this process serves only the API. */
+  webRoot?: string;
   /** Called for unexpected failures; the response itself never carries the detail. */
   onError?: (error: unknown, requestId: string) => void;
 }
@@ -110,6 +113,9 @@ function send(
 
 export function createRequestListener(options: ApiOptions) {
   const handler = buildHandler(options);
+  const serveStatic: StaticHandler | null = options.webRoot
+    ? createStaticHandler({ root: options.webRoot })
+    : null;
   const onError =
     options.onError ??
     ((error: unknown, requestId: string) => {
@@ -126,6 +132,10 @@ export function createRequestListener(options: ApiOptions) {
         send(response, 200, handler.openapi, headers);
         return;
       }
+
+      // The owner portal shares this origin. Static first so `/` and deep links load the
+      // app; the handler declines anything under `/api/`.
+      if (serveStatic && (await serveStatic(request, response))) return;
 
       const method = (request.method ?? "GET").toUpperCase();
       const route = handler.byKey.get(`${method} ${url.pathname}`);
