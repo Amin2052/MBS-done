@@ -218,7 +218,7 @@ check("app_runtime may call platform.user_by_email", lookupGrant.rows[0].ok === 
 // --- M4: the auth lookups are callable, and only through their functions -------
 for (const signature of [
   "platform.login_lookup(text,text)",
-  "platform.login_record_failure(text,integer,integer)",
+  "platform.login_record_failure(text,integer,integer,timestamptz)",
   "platform.login_record_success(text)",
   "platform.user_profile(uuid)",
   "platform.tenant_by_id(uuid)",
@@ -234,6 +234,34 @@ const attemptsTable = await db.query(
   "select has_table_privilege('app_runtime', 'platform.login_attempts', 'select') as ok"
 );
 check("app_runtime cannot read the login throttle table", attemptsTable.rows[0].ok === false);
+
+// --- M6: second-factor tables are functions-only, like identity -----------------
+for (const signature of [
+  "platform.mfa_state(uuid)",
+  "platform.mfa_begin(uuid,bytea,uuid,text,text,timestamp with time zone)",
+  "platform.mfa_challenge_lookup(bytea)",
+  "platform.mfa_challenge_fail(bytea,integer)",
+  "platform.mfa_challenge_consume(bytea)",
+  "platform.mfa_enroll_store(uuid,text)",
+  "platform.mfa_enroll_confirm(uuid,text,text[])",
+  "platform.mfa_recovery_use(uuid,bytea)",
+  "platform.mfa_recovery_remaining(uuid)",
+  "platform.mfa_touch_step(uuid,text)",
+]) {
+  const grant = await db.query(
+    "select has_function_privilege('app_runtime', $1, 'execute') as ok",
+    [signature]
+  );
+  check(`app_runtime may call ${signature}`, grant.rows[0].ok === true);
+}
+
+for (const table of ["mfa_credentials", "mfa_recovery_codes", "mfa_challenges"]) {
+  const privilege = await db.query(
+    "select has_table_privilege('app_runtime', $1, 'select') as ok",
+    [`platform.${table}`]
+  );
+  check(`app_runtime cannot read platform.${table}`, privilege.rows[0].ok === false);
+}
 
 // --- M4: capability policies expose one row each, never a tenant ----------------
 const userA = "33333333-3333-4333-8333-333333333333";
