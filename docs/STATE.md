@@ -3,8 +3,8 @@
 > Single resume point (spec 1.4). Keep this under 80 lines. Update after every work unit.
 
 **Updated:** 2026-11-21 (session 1, continued)
-**Current milestone:** M2 — architecture and decisions done; RLS spike passes; three
-spikes blocked by the environment
+**Current milestone:** M3 — foundation schema, tenancy checks and money module done and
+verified; auth/API layer next
 **Branch:** `main`, no feature branch yet
 **OLD_BASELINE_SHA:** `c2871d272428e65db055d49e31e53c41dc87706f`
 **NEW repository:** https://github.com/Amin2052/MBS-done.git — **public**
@@ -14,18 +14,26 @@ spikes blocked by the environment
 - M0: structure, guards, CI check, state files.
 - M1: 12 audit reports (screens, components, dependencies, parity, security/ASVS, ER,
   risks, offline, DB inventory, architecture, repository, manifest).
-- M2: ADR-0001…0014, design tokens, STRIDE threat model, and a **passing RLS spike**
-  (7/7) on PGlite as an unprivileged role.
+- M2: ADR-0001…0014, design tokens, STRIDE threat model, and a passing RLS spike (7/7)
+  on PGlite as an unprivileged role.
+- M3: `db/migrations/0001_foundation.sql` (platform/tenant schemas, `mbs_migrator` vs
+  `app_runtime`, 5 tenant tables, generated RLS policies, append-only audit log, gapless
+  counters, identity reachable only through a SECURITY DEFINER function);
+  `tools/check-rls.mjs` (static), `tools/verify-schema.mjs` (32/32 dynamic checks);
+  `packages/domain/src/money.ts` + tests; bn/en catalogs.
 
 ## Next 3 actions
 
-1. Re-run the blocked spikes on a machine with Docker or a managed Postgres:
+1. M4: migration runner with checksums, session/auth wiring on the foundation tables
+   (`withTenant`, `platform.user_by_email`, Argon2id, TOTP), and the first `/api/v1`
+   routes with OpenAPI generation.
+2. Re-run the blocked spikes on a machine with Docker or a managed Postgres:
    one-connection-pool concurrency, Kysely interactive transactions.
-2. Bangla PDF spike: fetch Playwright Chromium + Noto Sans Bengali, render the tricky
+3. Bangla PDF spike: fetch Playwright Chromium + Noto Sans Bengali, render the tricky
    conjunct corpus, compare hashes and `pdftotext` round trip.
-3. Start M3 foundation: `platform`/`tenant` schemas, migration role vs `app_runtime`,
-   RLS CI checks (tenant_id, FORCE, four policies, `security_invoker` views), i18n
-   catalogs wired, `packages/domain` money helpers, audit-log primitive.
+
+Verification for everything above: `npm run verify` (repo, RLS static, schema dynamic,
+money tests).
 
 ## Blockers
 

@@ -27,3 +27,4 @@ migration/source-copies/
 # OS / editor noise
 .DS_Store
 Thumbs.db
+*.log
