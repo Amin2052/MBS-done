@@ -1,0 +1,29 @@
+# Node / build output
+node_modules/
+dist/
+out/
+build/
+coverage/
+*.tsbuildinfo
+
+# Scratch (spec 0.1: old-copy exports and disposable working files)
+_work/
+
+# Legacy database copies — never committed (spec 0.1: SQLite copies stay local)
+migration/source-copies/
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+*.db
+*.db-wal
+*.db-shm
+
+# Secrets — only the placeholder template is tracked
+.env
+.env.*
+!.env.example
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
