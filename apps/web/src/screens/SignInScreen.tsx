@@ -1,12 +1,18 @@
 /**
- * Sign in (R-045 stays open for the second factor), including the one case the server
- * answers with a list instead of a session: an account that belongs to several businesses.
+ * Sign in: password first, then — for an owner or manager — the second factor, and for an
+ * account that belongs to several businesses, the business chooser the server answers with
+ * before any factor is asked for.
+ *
+ * The three stages live in one screen because they are one exchange: the browser holds a
+ * challenge token between stages and nothing else, and a lost challenge simply sends the
+ * person back to the password.
  */
 import { useState, type FormEvent } from "react";
 import type { Locale } from "../../../../packages/config/i18n/core.ts";
-import { ApiClientError, type ApiClient, type TenantSummary } from "../lib/api.ts";
+import { ApiClientError, type ApiClient, type MfaChallenge, type TenantSummary } from "../lib/api.ts";
 import type { Translate } from "../lib/messages.ts";
 import { Banner, Button, Field, describedBy } from "../components/ui.tsx";
+import { MfaStep } from "../components/MfaStep.tsx";
 
 export interface SignInScreenProps {
   api: ApiClient;
@@ -20,6 +26,11 @@ export interface SignInScreenProps {
 
 type Failure = { kind: "text"; message: string } | { kind: "tenants"; tenants: TenantSummary[] };
 
+type Stage =
+  | { name: "credentials" }
+  | { name: "mfa"; challenge: MfaChallenge }
+  | { name: "codes"; codes: string[] };
+
 export function SignInScreen({ api, t, locale, onLocaleChange, onSignedIn, notice }: SignInScreenProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -28,6 +39,8 @@ export function SignInScreen({ api, t, locale, onLocaleChange, onSignedIn, notic
   const [failure, setFailure] = useState<Failure | null>(null);
   const [touched, setTouched] = useState(false);
   const [pending, setPending] = useState(false);
+  const [stage, setStage] = useState<Stage>({ name: "credentials" });
+  const [mfaNotice, setMfaNotice] = useState<string | null>(null);
 
   const emailMissing = email.trim() === "";
   const passwordMissing = password === "";
@@ -73,11 +86,18 @@ export function SignInScreen({ api, t, locale, onLocaleChange, onSignedIn, notic
     setPending(true);
     setFailure(null);
     try {
-      await api.login({
+      const result = await api.login({
         email: email.trim(),
         password,
         ...(tenantSlug ? { tenantSlug } : {}),
       });
+      if (result.kind === "mfa" && result.challenge) {
+        // The password is verified but not enough: keep the email, drop the password.
+        setPassword("");
+        setMfaNotice(null);
+        setStage({ name: "mfa", challenge: result.challenge });
+        return;
+      }
       await onSignedIn();
     } catch (error) {
       const mapped = failureFor(error);
@@ -87,6 +107,15 @@ export function SignInScreen({ api, t, locale, onLocaleChange, onSignedIn, notic
       setPending(false);
     }
   }
+
+  function restart() {
+    setStage({ name: "credentials" });
+    setMfaNotice(null);
+    setFailure(null);
+    setPassword("");
+  }
+
+  const codesStage = stage.name === "codes";
 
   return (
     <main className="signin">
@@ -98,107 +127,147 @@ export function SignInScreen({ api, t, locale, onLocaleChange, onSignedIn, notic
         <p className="brand-copy">{t("auth.secureNote")}</p>
       </section>
 
-      <section className="signin-panel" aria-labelledby="signin-title">
-        <div className="signin-head">
-          <h1 className="page-title" id="signin-title">
-            {t("auth.signIn")}
-          </h1>
-          <label className="locale-control">
-            <span className="visually-hidden">{t("locale.label")}</span>
-            <select
-              className="select select-compact"
-              value={locale}
-              onChange={(event) => onLocaleChange(event.target.value as Locale)}
-            >
-              <option value="bn">{t("locale.bn")}</option>
-              <option value="en">{t("locale.en")}</option>
-            </select>
-          </label>
-        </div>
-        <p className="page-subtitle">{t("auth.subtitle")}</p>
-
-        {notice ? <Banner tone="error">{notice}</Banner> : null}
-        {failure?.kind === "text" ? <Banner tone="error">{failure.message}</Banner> : null}
-
-        <form className="signin-form" onSubmit={submit} noValidate>
-          <Field
-            id="signin-email"
-            label={t("auth.email")}
-            error={showEmailError ? t("common.required") : undefined}
-          >
-            <input
-              id="signin-email"
-              className="input"
-              type="email"
-              name="email"
-              autoComplete="username"
-              inputMode="email"
-              placeholder={t("auth.emailPlaceholder")}
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              aria-invalid={showEmailError || undefined}
-              {...describedBy("signin-email", { error: showEmailError ? "required" : undefined })}
-              required
-              autoFocus
-            />
-          </Field>
-
-          <Field
-            id="signin-password"
-            label={t("auth.password")}
-            hint={t("auth.passwordHint")}
-            error={showPasswordError ? t("common.required") : undefined}
-          >
-            <div className="password-wrap">
-              <input
-                id="signin-password"
-                className="input"
-                type={showPassword ? "text" : "password"}
-                name="password"
-                autoComplete="current-password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                aria-invalid={showPasswordError || undefined}
-                {...describedBy("signin-password", {
-                  hint: t("auth.passwordHint"),
-                  error: showPasswordError ? "required" : undefined,
-                })}
-                required
-              />
-              <button
-                type="button"
-                className="password-toggle"
-                onClick={() => setShowPassword((current) => !current)}
-                aria-pressed={showPassword}
-              >
-                {showPassword ? t("auth.hidePassword") : t("auth.showPassword")}
-              </button>
+      <section className="signin-panel" aria-labelledby={codesStage ? "codes-title" : "signin-title"}>
+        {stage.name === "credentials" ? (
+          <>
+            <div className="signin-head">
+              <h1 className="page-title" id="signin-title">
+                {t("auth.signIn")}
+              </h1>
+              <label className="locale-control">
+                <span className="visually-hidden">{t("locale.label")}</span>
+                <select
+                  className="select select-compact"
+                  value={locale}
+                  onChange={(event) => onLocaleChange(event.target.value as Locale)}
+                >
+                  <option value="bn">{t("locale.bn")}</option>
+                  <option value="en">{t("locale.en")}</option>
+                </select>
+              </label>
             </div>
-          </Field>
+            <p className="page-subtitle">{t("auth.subtitle")}</p>
 
-          {failure?.kind === "tenants" ? (
-            <fieldset className="choice-list">
-              <legend className="choice-legend">{t("auth.chooseBusinessTitle")}</legend>
-              <p className="field-hint">{t("auth.chooseBusinessBody")}</p>
-              {failure.tenants.map((tenant) => (
-                <label className="choice" key={tenant.id}>
+            {notice ? <Banner tone="error">{notice}</Banner> : null}
+            {failure?.kind === "text" ? <Banner tone="error">{failure.message}</Banner> : null}
+
+            <form className="signin-form" onSubmit={submit} noValidate>
+              <Field
+                id="signin-email"
+                label={t("auth.email")}
+                error={showEmailError ? t("common.required") : undefined}
+              >
+                <input
+                  id="signin-email"
+                  className="input"
+                  type="email"
+                  name="email"
+                  autoComplete="username"
+                  inputMode="email"
+                  placeholder={t("auth.emailPlaceholder")}
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  aria-invalid={showEmailError || undefined}
+                  {...describedBy("signin-email", { error: showEmailError ? "required" : undefined })}
+                  required
+                  autoFocus
+                />
+              </Field>
+
+              <Field
+                id="signin-password"
+                label={t("auth.password")}
+                hint={t("auth.passwordHint")}
+                error={showPasswordError ? t("common.required") : undefined}
+              >
+                <div className="password-wrap">
                   <input
-                    type="radio"
-                    name="business"
-                    value={tenant.slug}
-                    checked={tenantSlug === tenant.slug}
-                    onChange={() => setTenantSlug(tenant.slug)}
+                    id="signin-password"
+                    className="input"
+                    type={showPassword ? "text" : "password"}
+                    name="password"
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    aria-invalid={showPasswordError || undefined}
+                    {...describedBy("signin-password", {
+                      hint: t("auth.passwordHint"),
+                      error: showPasswordError ? "required" : undefined,
+                    })}
+                    required
                   />
-                  <span>{tenant.name}</span>
-                </label>
-              ))}
-            </fieldset>
-          ) : null}
+                  <button
+                    type="button"
+                    className="password-toggle"
+                    onClick={() => setShowPassword((current) => !current)}
+                    aria-pressed={showPassword}
+                  >
+                    {showPassword ? t("auth.hidePassword") : t("auth.showPassword")}
+                  </button>
+                </div>
+              </Field>
 
-          <Button type="submit" loading={pending}>
-            {pending ? t("auth.submitting") : t("auth.signIn")}
-          </Button>
-        </form>
+              {failure?.kind === "tenants" ? (
+                <fieldset className="choice-list">
+                  <legend className="choice-legend">{t("auth.chooseBusinessTitle")}</legend>
+                  <p className="field-hint">{t("auth.chooseBusinessBody")}</p>
+                  {failure.tenants.map((tenant) => (
+                    <label className="choice" key={tenant.id}>
+                      <input
+                        type="radio"
+                        name="business"
+                        value={tenant.slug}
+                        checked={tenantSlug === tenant.slug}
+                        onChange={() => setTenantSlug(tenant.slug)}
+                      />
+                      <span>{tenant.name}</span>
+                    </label>
+                  ))}
+                </fieldset>
+              ) : null}
+
+              <Button type="submit" loading={pending}>
+                {pending ? t("auth.submitting") : t("auth.signIn")}
+              </Button>
+            </form>
+          </>
+        ) : null}
+
+        {stage.name === "mfa" ? (
+          <MfaStep
+            api={api}
+            t={t}
+            challenge={stage.challenge}
+            notice={mfaNotice}
+            onNotice={setMfaNotice}
+            onSignedIn={onSignedIn}
+            onEnrolled={(codes) => setStage({ name: "codes", codes })}
+            onRestart={restart}
+          />
+        ) : null}
+
+        {stage.name === "codes" ? (
+          <>
+            <div className="signin-head">
+              <h1 className="page-title" id="codes-title">
+                {t("auth.mfaRecoveryTitle")}
+              </h1>
+            </div>
+            <p className="page-subtitle">
+              {t("auth.mfaRecoverySaved", { count: stage.codes.length })}
+            </p>
+            <ol className="recovery-codes" aria-labelledby="codes-title">
+              {stage.codes.map((code) => (
+                <li key={code}>
+                  <code>{code}</code>
+                </li>
+              ))}
+            </ol>
+            <Button type="button" onClick={() => void onSignedIn()}>
+              {t("auth.mfaRecoveryContinue")}
+            </Button>
+          </>
+        ) : null}
       </section>
     </main>
   );
