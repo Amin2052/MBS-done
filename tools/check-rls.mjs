@@ -88,24 +88,24 @@ for (const setting of ["app.tenant_id", "app.session_token_hash", "app.user_id"]
 }
 
 // Tables.
-const tableRe = /create\\s+table\\s+(?:if\\s+not\\s+exists\\s+)?([a-z_]+\\.[a-z_]+)\\s*\\(([\\s\\S]*?)\\n\\);/gi;
+const tableRe = /create\s+table\s+(?:if\s+not\s+exists\s+)?([a-z_]+\.[a-z_]+)\s*\(([\s\S]*?)\n\);/gi;
 const tables = [];
 for (const match of lower.matchAll(tableRe)) {
   tables.push({ name: match[1], body: match[2], index: match.index });
 }
 
 const policies = [];
-const policyRe = /create\\s+policy\\s+[a-z0-9_]+\\s+on\\s+([a-z_]+\\.[a-z_]+)\\s+for\\s+(select|insert|update|delete|all)([\\s\\S]*?);/gi;
+const policyRe = /create\s+policy\s+[a-z0-9_]+\s+on\s+([a-z_]+\.[a-z_]+)\s+for\s+(select|insert|update|delete|all)([\s\S]*?);/gi;
 for (const match of lower.matchAll(policyRe)) {
   policies.push({ table: match[1], cmd: match[2], body: match[3] });
 }
 
 // The DO block creates policies with dynamic SQL, so also accept the loop declaration:
-const loopTables = /foreach\\s+t\\s+in\\s+array\\s+array\\[([\\s\\S]*?)\\]/i.exec(lower);
+const loopTables = /foreach\s+t\s+in\s+array\s+array\[([\s\S]*?)\]/i.exec(lower);
 const loopCovered = new Set(
-  loopTables ? [...loopTables[1].matchAll(/'([a-z_]+\\.[a-z_]+)'/g)].map((m) => m[1]) : []
+  loopTables ? [...loopTables[1].matchAll(/'([a-z_]+\.[a-z_]+)'/g)].map((m) => m[1]) : []
 );
-const appendOnlyList = /t\\s*=\\s*'([a-z_]+\\.[a-z_]+)'/.exec(lower);
+const appendOnlyList = /t\s*=\s*'([a-z_]+\.[a-z_]+)'/.exec(lower);
 
 for (const table of tables) {
   const isTenant = TENANT_COLUMN.test(table.body);
@@ -114,15 +114,15 @@ for (const table of tables) {
 
   // The policy loop applies ENABLE/FORCE with EXECUTE format('alter table %s ...'), so a
   // table covered by the loop satisfies the rule through the generated statement.
-  const loopEnables = /execute\\s+format\\(\\s*'alter\\s+table\\s+%s\\s+enable\\s+row\\s+level\\s+security'/.test(lower);
-  const loopForces = /execute\\s+format\\(\\s*'alter\\s+table\\s+%s\\s+force\\s+row\\s+level\\s+security'/.test(lower);
+  const loopEnables = /execute\s+format\(\s*'alter\s+table\s+%s\s+enable\s+row\s+level\s+security'/.test(lower);
+  const loopForces = /execute\s+format\(\s*'alter\s+table\s+%s\s+force\s+row\s+level\s+security'/.test(lower);
   const escapedName = table.name.replace(".", "\\.");
   const enabled =
     loopEnables ||
-    new RegExp(`alter\\\\s+table\\\\s+${escapedName}\\\\s+enable\\\\s+row\\\\s+level\\\\s+security`).test(lower);
+    new RegExp(`alter\\s+table\\s+${escapedName}\\s+enable\\s+row\\s+level\\s+security`).test(lower);
   const forced =
     loopForces ||
-    new RegExp(`alter\\\\s+table\\\\s+${escapedName}\\\\s+force\\\\s+row\\\\s+level\\\\s+security`).test(lower);
+    new RegExp(`alter\\s+table\\s+${escapedName}\\s+force\\s+row\\s+level\\s+security`).test(lower);
 
   if (!enabled) fail(table.name, "missing ENABLE ROW LEVEL SECURITY");
   if (!forced) fail(table.name, "missing FORCE ROW LEVEL SECURITY");
@@ -149,7 +149,7 @@ for (const table of tables) {
     if (capability && policy.cmd !== "select") {
       fail(table.name, `capability policy for ${capability} is ${policy.cmd.toUpperCase()}, not SELECT`);
     }
-    if (/^\\s*using\\s*\\(\\s*true\\s*\\)/i.test(policy.body)) {
+    if (/^\s*using\s*\(\s*true\s*\)/i.test(policy.body)) {
       fail(table.name, `policy ${policy.cmd} is USING (true) — always passes`);
     }
   }

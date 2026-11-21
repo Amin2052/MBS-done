@@ -38,7 +38,7 @@
    (Playwright Chromium + Noto Sans Bengali, hash + `pdftotext` round trip).
 
 Verification for everything above: `npm run verify` (repo, RLS static, schema 42/42, four
-suite run). Migration CLI: `npm run migrate -- --status|--check|--dry-run`.
+test suites). Migration CLI: `npm run migrate -- --status|--check|--dry-run`.
 
 ## Blockers
 
