@@ -1,7 +1,8 @@
 /**
- * The owner portal. The session decides what renders: the sign-in screen until the server
- * confirms the cookie, then the shell. No route or screen trusts a stored user object —
- * every load asks `/api/v1/me`.
+ * The owner portal. The session decides whether anything renders at all: the sign-in
+ * screen until the server confirms the cookie, then the shell. The URL decides which
+ * screen inside the shell. No route or screen trusts a stored user object — every load
+ * asks `/api/v1/me`.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Locale } from "../../../packages/config/i18n/core.ts";
@@ -9,6 +10,9 @@ import { AppShell } from "./components/AppShell.tsx";
 import { createApiClient, type Me } from "./lib/api.ts";
 import { applyDocumentLocale, detectLocale, readStoredLocale, storeLocale } from "./lib/locale.ts";
 import { translatorFor } from "./lib/messages.ts";
+import { resolveRoute, useRouter } from "./lib/router.ts";
+import { DashboardScreen } from "./screens/DashboardScreen.tsx";
+import { NotFoundScreen } from "./screens/NotFoundScreen.tsx";
 import { ProfileScreen } from "./screens/ProfileScreen.tsx";
 import { SignInScreen } from "./screens/SignInScreen.tsx";
 
@@ -19,6 +23,8 @@ type SessionState =
 
 export function App() {
   const api = useMemo(() => createApiClient(), []);
+  const { path, navigate } = useRouter();
+  const route = resolveRoute(path);
   const [locale, setLocale] = useState<Locale>(() =>
     detectLocale({
       query: new URLSearchParams(window.location.search).get("lang"),
@@ -91,14 +97,17 @@ export function App() {
     );
   }
 
-  return (
-    <AppShell
-      me={session.me}
-      t={t}
-      locale={locale}
-      onLocaleChange={setLocale}
-      onSignOut={() => void handleSignOut()}
-    >
+  const screen =
+    route.id === "dashboard" ? (
+      <DashboardScreen
+        api={api}
+        me={session.me}
+        t={t}
+        locale={locale}
+        onSessionLost={handleSessionLost}
+        onNavigate={navigate}
+      />
+    ) : route.id === "profile" ? (
       <ProfileScreen
         api={api}
         me={session.me}
@@ -106,6 +115,21 @@ export function App() {
         locale={locale}
         onSessionLost={handleSessionLost}
       />
+    ) : (
+      <NotFoundScreen t={t} onBack={() => navigate("/")} />
+    );
+
+  return (
+    <AppShell
+      me={session.me}
+      t={t}
+      locale={locale}
+      onLocaleChange={setLocale}
+      onSignOut={() => void handleSignOut()}
+      path={route.path}
+      onNavigate={navigate}
+    >
+      {screen}
     </AppShell>
   );
 }

@@ -24,7 +24,9 @@ const PASSWORD = "correct horse battery staple";
 const ALPHA = "11111111-1111-4111-8111-111111111111";
 
 /** A controllable clock: TOTP steps and challenge expiry need to move on purpose. */
-let nowMs = Date.parse("2026-11-21T10:00:00.000Z");
+// Real clock: sessions are stamped with the database's now(), so a pinned past instant
+// eventually makes expires_at earlier than created_at.
+let nowMs = Date.now();
 const clock = () => new Date(nowMs);
 
 const USERS = {

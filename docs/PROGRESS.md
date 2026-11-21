@@ -21,6 +21,7 @@ _Old-repo integrity is re-checked at every milestone exit: `git -C old-src statu
 | M4 | Auth, sessions, API v1 | in-progress — runner, login/session/logout and the v1 routes green; Kysely and pool concurrency open | `docs/milestones/M04.md`, ADR-0015 |
 | M5 | Owner portal: sign in, business profile | in-progress — both screens built, bn/en, verified; further screens open | `docs/milestones/M05.md`, ADR-0016 |
 | M6 | Second factor: TOTP + recovery codes | done-verified for the sign-in path — 90 tests, schema 55/55; passkeys, session list and self-service reset open | `docs/milestones/M06.md`, ADR-0017 |
+| M7 | Owner shell, routing and dashboard | done-verified — 96 tests, dashboard tenant-scoped, deep links and not-found covered | `docs/milestones/M07.md`, ADR-0018 |
 
 ## Decisions taken on the owner's behalf
 
@@ -46,6 +47,9 @@ _Old-repo integrity is re-checked at every milestone exit: `git -C old-src statu
 | 2026-11-21 | Ten single-use recovery codes; TOTP secrets sealed with AES-256-GCM under `MBS_MFA_KEY` | D1 | ADR-0017 |
 | 2026-11-21 | Login challenges are hashed, single-use, five-minute tokens bound to one user and business | D1 | M06 |
 | 2026-11-21 | The login throttle takes the caller's clock (migration 0004) so one rule never compares two clocks | D1 | M06 |
+| 2026-11-22 | Dependency-free History API router with a fixed route table | D1 | ADR-0018 |
+| 2026-11-22 | Navigation lists only screens that exist and pass tests; it grants nothing | D1 | M07 |
+| 2026-11-22 | Dashboard shows profile, team and audit activity only — no ERP metric before its module | D1 | M07 |
 
 ## Open questions
 

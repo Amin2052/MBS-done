@@ -28,7 +28,7 @@
     "test:api": "node --test apps/api/test/api.test.ts",
     "test:static": "node --test apps/api/test/static.test.ts",
     "test:mfa": "node --test apps/api/test/mfa.test.ts",
-    "test:web": "node --test apps/web/test/i18n.test.ts apps/web/test/api-client.test.ts apps/web/test/org-form.test.ts apps/web/test/mfa.test.ts",
+    "test:web": "node --test apps/web/test/i18n.test.ts apps/web/test/api-client.test.ts apps/web/test/org-form.test.ts apps/web/test/mfa.test.ts apps/web/test/router.test.ts",
     "test": "npm run test:money && npm run test:auth && npm run test:totp && npm run test:data && npm run test:api && npm run test:mfa && npm run test:static && npm run test:web",
     "verify": "npm run check:repo && npm run check:rls && npm run check:i18n && npm run verify:schema && npm run typecheck && npm run build:web && npm test"
   },

@@ -2,10 +2,10 @@
 
 > Single resume point (spec 1.4). Keep this under 80 lines. Update after every work unit.
 
-**Updated:** 2026-11-21 (session 1, continued — M6)
-**Current milestone:** M6 — TOTP second-factor sign-in with recovery codes is built for
-owner and manager accounts in Bangla and English and verified; the dashboard shell, session
-list and the blocked infrastructure spikes are next
+**Updated:** 2026-11-22 (session 2 — M7)
+**Current milestone:** M7 — the owner shell has a router, a sidebar limited to screens that
+exist, and a dashboard fed by a tenant-scoped endpoint; session list, permission-driven
+navigation and the first ERP module are next
 **Branch:** `main`, no feature branch yet
 **OLD_BASELINE_SHA:** `c2871d272428e65db055d49e31e53c41dc87706f`
 **NEW repository:** https://github.com/Amin2052/MBS-done.git — **public**
@@ -15,29 +15,31 @@ list and the blocked infrastructure spikes are next
 - M0: structure, guards, CI check, state files.
 - M1: 12 audit reports (screens, components, dependencies, parity, security/ASVS, ER,
   risks, offline, DB inventory, architecture, repository, manifest).
-- M2: ADR-0001…0017, design tokens, STRIDE threat model, passing RLS spike (7/7).
+- M2: ADR-0001…0018, design tokens, STRIDE threat model, passing RLS spike (7/7).
 - M3: `db/migrations/0001_foundation.sql` (platform/tenant schemas, 5 tenant tables,
   generated RLS, append-only audit log, gapless counters, identity via functions);
   `tools/check-rls.mjs`, `tools/verify-schema.mjs`, money module, bn/en catalogs.
-- M4: checksummed migration runner; `0002_auth.sql` (login throttle keyed by email hash,
-  five definer functions, two SELECT-only capability policies); Argon2id + opaque sessions;
+- M4: checksummed migration runner; `0002_auth.sql` (login throttle, five definer
+  functions, two SELECT-only capability policies); Argon2id + opaque sessions;
   `/api/v1` routes and the generated OpenAPI document.
-- M5: `apps/web` owner portal (React 19 + Vite, ADR-0016): sign-in and business profile,
-  85 message ids per catalog, shared ICU core, i18n gate, API-served bundle with CSP.
-- M6: `0003_mfa.sql` + `0004_login_clock.sql`; TOTP (RFC 6238) and ten recovery codes for
-  owner and manager accounts, challenge tokens stored as hashes, secrets sealed with
-  AES-256-GCM under `MBS_MFA_KEY`, enrolment inside the sign-in flow, second step of the
-  screen in bn/en (111 messages), `npm run mfa:code` for testing without a phone.
+- M5: `apps/web` owner portal (React 19 + Vite, ADR-0016): sign-in and business profile.
+- M6: `0003_mfa.sql` + `0004_login_clock.sql`; mandatory TOTP + ten recovery codes for
+  owner/manager, enrolment inside sign-in, sealed secrets, `npm run mfa:code`; 141
+  messages now (bn/en).
+- M7: ADR-0018; dependency-free History router (`/`, `/profile`, not-found); sidebar with
+  active state and mobile strip; `GET /api/v1/dashboard` (profile, active team by role,
+  last 10 audit entries, own session) with loading/error/empty states. 96 tests.
 
 ## Next 3 actions
 
-1. M7: dashboard shell + navigation and the router decision ADR-0016 deferred.
-2. Session list with revoke-all, then self-service factor reset plus a support runbook.
-3. Re-run the blocked spikes on a machine with Docker or a managed Postgres: pool
-   concurrency, Kysely interactive transactions, then the Bangla PDF spike.
+1. Session list with revoke-all, then self-service factor reset plus a support runbook.
+2. Permission catalogue + invitation flow, so navigation can be permission-derived and
+   the Employees screen can exist.
+3. Customers module end to end (backend, screen, permissions, isolation test, parity
+   checklist) as the template for the remaining ERP modules.
 
-Verification: `npm run verify` (repo, static RLS, i18n, schema 55/55, typecheck, portal
-build, 90 tests). Portal: `npm run dev:api` + `npm run dev:web`.
+Verification: `npm run verify` (repo, static RLS, i18n 141/141, schema 55/55, typecheck,
+portal build, 96 tests). Portal: `npm run dev:api` + `npm run dev:web`.
 
 ## Blockers
 
@@ -57,7 +59,7 @@ ADR-0007 Postgres job queue · ADR-0008 ICU i18n (bn/en) · ADR-0009 REST `/api/
 ADR-0010 online-only web, legacy desktop offline · ADR-0011 v1 scope · ADR-0012 Singapore +
 PDPO · ADR-0013 email/SMS pending spike · ADR-0014 threat model · ADR-0015 pre-auth
 capabilities · ADR-0016 React + Vite SPA same-origin · ADR-0017 mandatory TOTP for owners and
-managers, recovery codes, sealed secrets.
+managers · ADR-0018 dependency-free history router, nav lists only existing screens.
 
 ## Pending NEEDS-PROFESSIONAL-REVIEW
 

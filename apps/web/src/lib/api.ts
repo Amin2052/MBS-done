@@ -90,6 +90,22 @@ export type OrgPatch = Partial<
   >
 >;
 
+export interface DashboardSummary {
+  business: {
+    name: string;
+    slug: string;
+    legalName: string | null;
+    bin: string | null;
+    currency: string;
+    numberingSystem: "bengali" | "latin";
+    fiscalYearStartMonth: number;
+    vatRegistered: boolean;
+  };
+  team: { active: number; byRole: Record<Role, number> };
+  activity: Array<{ id: string; action: string; entity: string; createdAt: string }>;
+  session: { email: string; role: Role; expiresAt: string };
+}
+
 export class ApiClientError extends Error {
   readonly status: number;
   readonly code: string;
@@ -304,6 +320,11 @@ export function createApiClient(options: ApiClientOptions = {}) {
 
     async logout(): Promise<void> {
       await request<void>("/auth/logout", { method: "POST" });
+    },
+
+    async getDashboard(): Promise<DashboardSummary> {
+      const body = await request<{ dashboard: DashboardSummary }>("/dashboard");
+      return body.dashboard;
     },
 
     async getOrg(): Promise<OrgSettings> {

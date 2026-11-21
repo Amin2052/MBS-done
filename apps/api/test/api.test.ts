@@ -47,7 +47,9 @@ let base = "";
  * through the real two-stage flow. The clock moves a step per sign-in because a code from
  * a step already spent is refused as a replay.
  */
-let mockNow = Date.parse("2026-11-21T10:00:00.000Z");
+// Start from the real clock: `tenant.sessions.created_at` defaults to now(), and the
+// expiry has to be after it. A pinned past instant passes one day and fails the next.
+let mockNow = Date.now();
 const SECRETS = new Map<string, string>();
 
 async function seed() {
@@ -355,6 +357,36 @@ test("the HTTP layer rejects unknown routes, wrong methods and non-JSON bodies",
     body: "{not json",
   });
   assert.equal(badJson.status, 400);
+});
+
+test("the dashboard summarises only the session's business", async () => {
+  const alpha = await signIn(EMAILS.alphaOwner);
+  const dashboard = await call("GET", "/api/v1/dashboard", { cookie: alpha.cookie! });
+  assert.equal(dashboard.status, 200);
+  assert.equal(dashboard.json.dashboard.business.name, "Alpha Traders");
+  assert.equal(dashboard.json.dashboard.session.email, EMAILS.alphaOwner);
+  assert.equal(dashboard.json.dashboard.session.role, "owner");
+  assert.ok(dashboard.json.dashboard.team.byRole.owner >= 1);
+  assert.ok(dashboard.json.dashboard.team.active >= 3);
+  assert.ok(
+    dashboard.json.dashboard.activity.some(
+      (entry: { action: string }) => entry.action === "auth.login"
+    )
+  );
+  assert.ok(!JSON.stringify(dashboard.json).includes("Beta Foods"));
+
+  const beta = await signIn(EMAILS.bothOwner, { tenant_slug: "beta" });
+  const betaDashboard = await call("GET", "/api/v1/dashboard", { cookie: beta.cookie! });
+  assert.equal(betaDashboard.json.dashboard.business.name, "Beta Foods");
+  assert.equal(betaDashboard.json.dashboard.team.active, 1);
+  assert.ok(!JSON.stringify(betaDashboard.json).includes("Alpha Traders"));
+
+  const employee = await login(EMAILS.alphaEmployee);
+  const employeeDashboard = await call("GET", "/api/v1/dashboard", { cookie: employee.cookie! });
+  assert.equal(employeeDashboard.status, 200);
+  assert.equal(employeeDashboard.json.dashboard.session.role, "employee");
+
+  assert.equal((await call("GET", "/api/v1/dashboard")).status, 401);
 });
 
 test("the OpenAPI document matches the router exactly", async () => {

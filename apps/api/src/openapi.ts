@@ -49,6 +49,66 @@ const orgSchema = {
   },
 } as const;
 
+const dashboardSchema = {
+  type: "object",
+  required: ["business", "team", "activity", "session"],
+  properties: {
+    business: {
+      type: "object",
+      required: ["name", "slug", "currency", "numberingSystem", "fiscalYearStartMonth", "vatRegistered"],
+      properties: {
+        name: { type: "string" },
+        slug: { type: "string" },
+        legalName: { type: ["string", "null"] },
+        bin: { type: ["string", "null"] },
+        currency: { type: "string", enum: ["BDT"] },
+        numberingSystem: { type: "string", enum: ["bengali", "latin"] },
+        fiscalYearStartMonth: { type: "integer", minimum: 1, maximum: 12 },
+        vatRegistered: { type: "boolean" },
+      },
+    },
+    team: {
+      type: "object",
+      required: ["active", "byRole"],
+      properties: {
+        active: { type: "integer", minimum: 0 },
+        byRole: {
+          type: "object",
+          required: ["owner", "manager", "accountant", "employee"],
+          properties: {
+            owner: { type: "integer", minimum: 0 },
+            manager: { type: "integer", minimum: 0 },
+            accountant: { type: "integer", minimum: 0 },
+            employee: { type: "integer", minimum: 0 },
+          },
+        },
+      },
+    },
+    activity: {
+      type: "array",
+      items: {
+        type: "object",
+        required: ["id", "action", "entity", "createdAt"],
+        properties: {
+          id: { type: "string" },
+          action: { type: "string" },
+          entity: { type: "string" },
+          createdAt: { type: "string", format: "date-time" },
+        },
+      },
+    },
+    session: {
+      type: "object",
+      required: ["email", "role", "expiresAt"],
+      properties: {
+        email: { type: "string", format: "email" },
+        role: { type: "string", enum: ["owner", "manager", "accountant", "employee"] },
+        expiresAt: { type: "string", format: "date-time" },
+      },
+    },
+  },
+} as const;
+
 const ERROR_RESPONSES = {
   "400": { description: "Invalid request", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
   "401": { description: "Not signed in", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
@@ -228,6 +288,21 @@ function successResponse(path: string, method: string) {
       },
     };
   }
+  if (path === "/api/v1/dashboard") {
+    return {
+      "200": {
+        description: "Profile, team counts and recent activity for the session's business",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: { dashboard: { $ref: "#/components/schemas/Dashboard" } },
+            },
+          },
+        },
+      },
+    };
+  }
   if (path === "/api/v1/me") {
     return {
       "200": {
@@ -291,6 +366,7 @@ export function openApiDocument(routes: RouteDefinition[]): Record<string, unkno
       { name: "auth", description: "Sign in and out" },
       { name: "me", description: "The signed-in user" },
       { name: "org", description: "Business profile" },
+      { name: "dashboard", description: "Live business summary" },
       { name: "health", description: "Liveness" },
     ],
     paths,
@@ -298,7 +374,12 @@ export function openApiDocument(routes: RouteDefinition[]): Record<string, unkno
       securitySchemes: {
         cookieAuth: { type: "apiKey", in: "cookie", name: "mbs_session" },
       },
-      schemas: { Error: errorSchema, Tenant: tenantSchema, OrgSettings: orgSchema },
+      schemas: {
+        Error: errorSchema,
+        Tenant: tenantSchema,
+        OrgSettings: orgSchema,
+        Dashboard: dashboardSchema,
+      },
     },
   };
 }

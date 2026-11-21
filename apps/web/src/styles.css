@@ -284,9 +284,9 @@ fieldset {
 }
 
 .page {
-  width: min(920px, calc(100% - 2 * var(--space-5)));
-  margin: 0 auto;
-  padding: var(--space-7) 0 var(--space-9);
+  width: min(1040px, 100%);
+  margin: 0;
+  padding: var(--space-7) clamp(var(--space-4), 4vw, var(--space-7)) var(--space-9);
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
@@ -645,6 +645,205 @@ fieldset {
   user-select: all;
 }
 
+/* ------------------------------------------------------------- app body ----- */
+
+.app-body {
+  display: grid;
+  grid-template-columns: 244px minmax(0, 1fr);
+  align-items: start;
+  flex: 1;
+}
+
+.sidebar {
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  padding: var(--space-5) var(--space-3);
+  min-height: 100%;
+}
+
+.nav-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.nav-link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--row);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  text-decoration: none;
+  font-size: 0.9375rem;
+  font-weight: 500;
+}
+
+.nav-link:hover {
+  background: var(--surface-2);
+}
+
+.nav-link-active {
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--primary);
+}
+
+.nav-icon {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  fill: currentColor;
+}
+
+/* -------------------------------------------------------------- dashboard ---- */
+
+.card-title {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.text-link {
+  color: var(--primary);
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.text-link:hover {
+  text-decoration: underline;
+}
+
+.dash-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.dash-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.dash-card-wide {
+  grid-column: 1 / -1;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3) var(--space-5);
+  margin: 0;
+}
+
+.detail-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.detail-row dt {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.detail-row dd {
+  margin: 0;
+  font-size: 0.9375rem;
+  overflow-wrap: anywhere;
+}
+
+.stat-value {
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-note {
+  font-size: 0.9375rem;
+  font-weight: 500;
+}
+
+.role-list {
+  list-style: none;
+  margin: var(--space-1) 0 0;
+  padding: var(--space-3) 0 0;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.role-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.role-count {
+  color: var(--text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.activity-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.activity-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9375rem;
+}
+
+.activity-item:last-child {
+  border-bottom: 0;
+}
+
+.activity-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--secondary);
+  flex: none;
+}
+
+.activity-label {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.activity-time {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+
 /* -------------------------------------------------------------- responsive ---- */
 
 @media (max-width: 860px) {
@@ -673,6 +872,35 @@ fieldset {
 
   /* Ten recovery codes on a phone: one per line, so nothing is cut off. */
   .recovery-codes {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* One column of screens; the sidebar becomes a scrollable strip under the topbar. */
+  .app-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sidebar {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+    padding: var(--space-2) var(--space-4);
+  }
+
+  .nav-list {
+    flex-direction: row;
+    overflow-x: auto;
+  }
+
+  .nav-link {
+    white-space: nowrap;
+  }
+
+  .page {
+    padding-inline: var(--space-4);
+  }
+
+  .dash-grid,
+  .detail-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 }

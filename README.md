@@ -65,7 +65,7 @@ MBS_WEB_ROOT=apps/web/dist npm run start:api
 ```
 
 `npm run verify` runs the repository checks, the static RLS and i18n gates, the schema
-verifier (55 checks), the type check, the portal build and all 90 tests.
+verifier (55 checks), the type check, the portal build and all 96 tests.
 
 ## Working with the legacy repository
 

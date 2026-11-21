@@ -96,6 +96,94 @@ async function loadOrg(tx: Tx, tenantId: string): Promise<OrgSettings> {
   return toOrgSettings(row);
 }
 
+export interface DashboardSummary {
+  business: {
+    name: string;
+    slug: string;
+    legalName: string | null;
+    bin: string | null;
+    currency: string;
+    numberingSystem: "bengali" | "latin";
+    fiscalYearStartMonth: number;
+    vatRegistered: boolean;
+  };
+  team: {
+    active: number;
+    byRole: Record<SessionContext["role"], number>;
+  };
+  activity: Array<{ id: string; action: string; entity: string; createdAt: string }>;
+  session: { email: string; role: SessionContext["role"]; expiresAt: string };
+}
+
+/**
+ * The dashboard's only data source. Every query below is tenant-scoped twice: by the RLS
+ * policy of the transaction and by the explicit `tenant_id` predicate.
+ */
+async function loadDashboard(tx: Tx, session: SessionContext): Promise<DashboardSummary> {
+  const org = await loadOrg(tx, session.tenant.id);
+
+  const roles = await tx.query<{ role: string; count: number }>(
+    `select role, count(*)::int as count
+       from tenant.memberships
+      where tenant_id = $1 and status = 'active'
+      group by role`,
+    [session.tenant.id]
+  );
+  const byRole: Record<SessionContext["role"], number> = {
+    owner: 0,
+    manager: 0,
+    accountant: 0,
+    employee: 0,
+  };
+  let active = 0;
+  for (const row of roles.rows) {
+    if (!(row.role in byRole)) continue;
+    const role = row.role as SessionContext["role"];
+    const count = Number(row.count);
+    byRole[role] = count;
+    active += count;
+  }
+
+  const activity = await tx.query<{
+    id: string;
+    action: string;
+    entity: string;
+    created_at: string | Date;
+  }>(
+    `select id::text as id, action, entity, created_at
+       from tenant.audit_log
+      where tenant_id = $1
+      order by created_at desc, id desc
+      limit 10`,
+    [session.tenant.id]
+  );
+
+  return {
+    business: {
+      name: session.tenant.name,
+      slug: session.tenant.slug,
+      legalName: org.legalName,
+      bin: org.bin,
+      currency: org.currency,
+      numberingSystem: org.numberingSystem,
+      fiscalYearStartMonth: org.fiscalYearStartMonth,
+      vatRegistered: org.vatRegistered,
+    },
+    team: { active, byRole },
+    activity: activity.rows.map((row) => ({
+      id: row.id,
+      action: row.action,
+      entity: row.entity,
+      createdAt: new Date(row.created_at).toISOString(),
+    })),
+    session: {
+      email: session.user.email,
+      role: session.role,
+      expiresAt: session.expiresAt,
+    },
+  };
+}
+
 const ORG_TEXT_FIELDS = {
   legalName: "legal_name",
   bin: "bin",
@@ -293,6 +381,20 @@ export function createRoutes(options: { auth: AuthService; secureCookies: boolea
             session: { expires_at: session.expiresAt },
           },
         };
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/v1/dashboard",
+      operationId: "getDashboard",
+      summary: "Live summary of the active business: profile, team and recent activity",
+      auth: true,
+      handler: async ({ db, session }) => {
+        if (!session) throw new ApiError(401, "unauthenticated", "sign in first");
+        const dashboard = await withTenant(db, session.tenant.id, (tx) =>
+          loadDashboard(tx, session)
+        );
+        return { status: 200, body: { dashboard } };
       },
     },
     {
