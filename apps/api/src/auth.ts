@@ -14,7 +14,6 @@ import {
 } from "../../../packages/domain/src/auth/password.ts";
 import {
   SESSION_TTL_SECONDS,
-  createSessionToken,
   hashEmail,
   hashSessionToken,
   looksLikeEmail,
@@ -22,14 +21,21 @@ import {
   tokenCapabilityValue,
 } from "../../../packages/domain/src/auth/session.ts";
 import { ApiError, invalidRequest } from "./errors.ts";
+import { createMfaFlow, type MfaChallengeBody, type MfaSignIn } from "./mfa.ts";
+import { issueSession, type SessionRole } from "./session.ts";
 
 export interface AuthOptions {
   db: Db;
+  /** Key that seals TOTP secrets (ADR-0017). Never the database's own key. */
+  mfaKey: Buffer;
   now?: () => Date;
   sessionTtlSeconds?: number;
   /** Failures before the address is locked, and for how long. */
   lockThreshold?: number;
   lockSeconds?: number;
+  mfaIssuer?: string;
+  challengeTtlSeconds?: number;
+  mfaMaxAttempts?: number;
 }
 
 export interface RequestMeta {
@@ -53,13 +59,21 @@ export interface SessionContext {
   expiresAt: string;
 }
 
-export interface LoginResult {
+export interface LoginSession {
+  kind: "session";
   token: string;
   expiresAt: string;
   tenant: TenantSummary;
   user: { id: string; email: string };
   role: SessionContext["role"];
 }
+
+/** Either a session, or the next step a privileged account must complete first. */
+export type LoginResult =
+  | LoginSession
+  | { kind: "mfa"; challenge: MfaChallengeBody };
+
+export type { MfaSignIn };
 
 interface MembershipRow {
   tenant_id: string;
@@ -125,6 +139,39 @@ export function createAuthService(options: AuthOptions) {
   const lockThreshold = options.lockThreshold ?? 5;
   const lockSeconds = options.lockSeconds ?? 900;
 
+  /** The business and role a challenge is bound to, re-proved at code time. */
+  async function resolveContext(userId: string, tenantId: string) {
+    const tenant = await tenantSummary(db, tenantId);
+    if (!tenant || tenant.status !== "active") return null;
+    const rows = await withCapability(db, "app.user_id", userId, async (tx: Tx) => {
+      const result = await tx.query<{
+        tenant_id: string;
+        role: SessionRole;
+        status: string;
+      }>("select tenant_id, role, status from tenant.memberships where user_id = $1", [userId]);
+      return result.rows;
+    });
+    const membership = rows.find((row) => row.tenant_id === tenantId);
+    if (!membership || membership.status !== "active") return null;
+    return {
+      tenant: { id: tenant.id, slug: tenant.slug, name: tenant.name },
+      role: membership.role,
+    };
+  }
+
+  const mfa = createMfaFlow({
+    db,
+    key: options.mfaKey,
+    now,
+    issuer: options.mfaIssuer,
+    challengeTtlSeconds: options.challengeTtlSeconds,
+    maxAttempts: options.mfaMaxAttempts,
+    lockThreshold,
+    lockSeconds,
+    sessionTtlSeconds: ttl,
+    resolveContext,
+  });
+
   async function login(
     input: { email?: unknown; password?: unknown; tenantSlug?: unknown },
     meta: RequestMeta
@@ -169,8 +216,8 @@ export function createAuthService(options: AuthOptions) {
     const verified = await verifyPassword(password, account.password_hash);
     if (!verified) {
       const failure = await db.query<{ failures: number; locked_until: string | Date | null }>(
-        "select failures, locked_until from platform.login_record_failure($1, $2, $3)",
-        [emailHash, lockThreshold, lockSeconds]
+        "select failures, locked_until from platform.login_record_failure($1, $2, $3, $4)",
+        [emailHash, lockThreshold, lockSeconds, now()]
       );
       const locked = failure.rows[0]?.locked_until;
       if (locked && toDate(locked) > now()) {
@@ -218,42 +265,60 @@ export function createAuthService(options: AuthOptions) {
     const user = profile.rows[0];
     if (!user) throw new ApiError(401, "invalid_credentials", "email or password is incorrect");
 
-    const token = createSessionToken();
-    const tokenHash = hashSessionToken(token);
-    const expiresAt = new Date(now().getTime() + ttl * 1000);
-    const ipHash = meta.ip ? hashEmail(`ip:${meta.ip}`) : null;
-    const userAgentHash = meta.userAgent ? hashEmail(`ua:${meta.userAgent}`) : null;
+    const tenant: TenantSummary = {
+      id: chosen.tenant.id,
+      slug: chosen.tenant.slug,
+      name: chosen.tenant.name,
+    };
 
-    await withTenant(db, chosen.tenant_id, async (tx) => {
-      await tx.query(
-        `insert into tenant.sessions
-           (tenant_id, user_id, token_hash, expires_at, ip_hash, user_agent_hash)
-         values ($1, $2, decode($3, 'hex'), $4,
-                 case when $5::text is null then null else decode($5::text, 'hex') end,
-                 case when $6::text is null then null else decode($6::text, 'hex') end)`,
-        [chosen.tenant_id, account.id, tokenHash, expiresAt, ipHash, userAgentHash]
-      );
-      await tx.query(
-        `insert into tenant.audit_log
-           (tenant_id, actor_user_id, action, entity, entity_id, request_id, after)
-         values ($1, $2, 'auth.login', 'session', $3, $4, $5::jsonb)`,
-        [
-          chosen.tenant_id,
-          account.id,
-          chosen.tenant_id,
-          meta.requestId,
-          JSON.stringify({ role: chosen.role, tenant: chosen.tenant.slug }),
-        ]
-      );
+    // Owners and managers cannot turn the second factor off by forgetting it: an account
+    // with no confirmed TOTP credential is sent to enrolment instead of a session.
+    if (chosen.role === "owner" || chosen.role === "manager") {
+      const challenge = await mfa.begin({
+        user,
+        tenant,
+        role: chosen.role,
+        emailHash,
+        meta,
+      });
+      return { kind: "mfa", challenge };
+    }
+
+    const issued = await issueSession({
+      db,
+      userId: account.id,
+      tenant,
+      role: chosen.role,
+      strength: "password",
+      meta,
+      now,
+      ttlSeconds: ttl,
     });
 
     return {
-      token,
-      expiresAt: expiresAt.toISOString(),
-      tenant: { id: chosen.tenant.id, slug: chosen.tenant.slug, name: chosen.tenant.name },
+      kind: "session",
+      token: issued.token,
+      expiresAt: issued.expiresAt,
+      tenant,
       user: { id: user.id, email: user.email },
       role: chosen.role,
     };
+  }
+
+  async function verifyMfa(input: {
+    challengeToken: unknown;
+    code: unknown;
+    meta: RequestMeta;
+  }): Promise<MfaSignIn> {
+    return mfa.verify(input);
+  }
+
+  async function enrollMfa(input: {
+    challengeToken: unknown;
+    code: unknown;
+    meta: RequestMeta;
+  }): Promise<MfaSignIn & { recoveryCodes: string[] }> {
+    return mfa.enroll(input);
   }
 
   /**
@@ -343,7 +408,7 @@ export function createAuthService(options: AuthOptions) {
     });
   }
 
-  return { login, resolveSession, logout, hashPassword };
+  return { login, verifyMfa, enrollMfa, resolveSession, logout, hashPassword };
 }
 
 export type AuthService = ReturnType<typeof createAuthService>;
