@@ -22,10 +22,36 @@ export interface LoginInput {
 }
 
 export interface LoginResult {
-  user: { id: string; email: string };
-  tenant: TenantSummary;
-  role: Role;
+  /** "session" means the cookie is set and the portal can load; "mfa" means one more step. */
+  kind: "session" | "mfa";
+  user?: { id: string; email: string };
+  tenant?: TenantSummary;
+  role?: Role;
+  expiresAt?: string;
+  challenge?: MfaChallenge;
+}
+
+export interface MfaEnrollment {
+  secret: string;
+  secretDisplay: string;
+  otpauthUri: string;
+  issuer: string;
+  account: string;
+  digits: number;
+  periodSeconds: number;
+}
+
+export interface MfaChallenge {
+  status: "verify" | "enroll";
+  challengeToken: string;
   expiresAt: string;
+  enrollment?: MfaEnrollment;
+}
+
+export interface MfaResult {
+  expiresAt: string;
+  /** Returned once, by enrolment only; the server keeps only hashes. */
+  recoveryCodes?: string[];
 }
 
 export interface Me {
@@ -180,10 +206,24 @@ export function createApiClient(options: ApiClientOptions = {}) {
   return {
     async login(input: LoginInput): Promise<LoginResult> {
       const body = await request<{
-        user: { id: string; email: string };
-        tenant: TenantSummary;
-        role: Role;
-        expires_at: string;
+        user?: { id: string; email: string };
+        tenant?: TenantSummary;
+        role?: Role;
+        expires_at?: string;
+        mfa?: {
+          status: "verify" | "enroll";
+          challenge_token: string;
+          expires_at: string;
+          enrollment?: {
+            secret: string;
+            secret_display: string;
+            otpauth_uri: string;
+            issuer: string;
+            account: string;
+            digits: number;
+            period_seconds: number;
+          };
+        };
       }>("/auth/login", {
         method: "POST",
         body: JSON.stringify({
@@ -192,12 +232,57 @@ export function createApiClient(options: ApiClientOptions = {}) {
           ...(input.tenantSlug ? { tenant_slug: input.tenantSlug } : {}),
         }),
       });
+
+      if (body.mfa) {
+        return {
+          kind: "mfa",
+          challenge: {
+            status: body.mfa.status,
+            challengeToken: body.mfa.challenge_token,
+            expiresAt: body.mfa.expires_at,
+            enrollment: body.mfa.enrollment
+              ? {
+                  secret: body.mfa.enrollment.secret,
+                  secretDisplay: body.mfa.enrollment.secret_display,
+                  otpauthUri: body.mfa.enrollment.otpauth_uri,
+                  issuer: body.mfa.enrollment.issuer,
+                  account: body.mfa.enrollment.account,
+                  digits: body.mfa.enrollment.digits,
+                  periodSeconds: body.mfa.enrollment.period_seconds,
+                }
+              : undefined,
+          },
+        };
+      }
+
       return {
+        kind: "session",
         user: body.user,
         tenant: body.tenant,
         role: body.role,
         expiresAt: body.expires_at,
       };
+    },
+
+    /** Second stage of a sign-in: a TOTP code or one recovery code. */
+    async mfaVerify(input: { challengeToken: string; code: string }): Promise<MfaResult> {
+      const body = await request<{ expires_at: string }>("/auth/mfa/verify", {
+        method: "POST",
+        body: JSON.stringify({ challenge_token: input.challengeToken, code: input.code }),
+      });
+      return { expiresAt: body.expires_at };
+    },
+
+    /** First-factor enrolment: confirm the secret's first code and receive recovery codes. */
+    async mfaEnroll(input: { challengeToken: string; code: string }): Promise<MfaResult> {
+      const body = await request<{ expires_at: string; recovery_codes: string[] }>(
+        "/auth/mfa/enroll",
+        {
+          method: "POST",
+          body: JSON.stringify({ challenge_token: input.challengeToken, code: input.code }),
+        }
+      );
+      return { expiresAt: body.expires_at, recoveryCodes: body.recovery_codes };
     },
 
     async me(): Promise<Me> {
